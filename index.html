@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Vault Hunt</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <style>
+    body { margin:0; font-family: Arial; }
+    #map { height: 100vh; }
+    #join {
+      position:absolute;
+      top:20px;
+      left:20px;
+      background:white;
+      padding:10px;
+      z-index:1000;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="join">
+  <input id="name" placeholder="Your name"><br><br>
+  <button onclick="join('red')">Join Red</button>
+  <button onclick="join('green')">Join Green</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js"></script>
+
+<script>
+  // 🔥 PASTE YOUR FIREBASE CONFIG HERE
+  const firebaseConfig = {
+    apiKey: "PASTE HERE",
+    authDomain: "PASTE HERE",
+    databaseURL: "PASTE HERE",
+    projectId: "PASTE HERE",
+  };
+
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  let playerId = Date.now().toString();
+  let team = null;
+
+  // 🗺️ MAP
+  const map = L.map('map').setView([-27.47, 153.02], 18);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+    .addTo(map);
+
+  const markers = {};
+
+  function join(selectedTeam) {
+    team = selectedTeam;
+    document.getElementById("join").style.display = "none";
+
+    navigator.geolocation.watchPosition((pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      // update firebase
+      db.ref("players/" + playerId).set({
+        lat, lng, team
+      });
+
+      map.setView([lat, lng]);
+    });
+  }
+
+  // 👀 LISTEN FOR PLAYERS
+  db.ref("players").on("value", (snapshot) => {
+    const players = snapshot.val();
+
+    for (let id in players) {
+      const p = players[id];
+
+      if (!markers[id]) {
+        markers[id] = L.circleMarker([p.lat, p.lng], {
+          radius: 8,
+          color: p.team === "red" ? "red" : "green"
+        }).addTo(map);
+      } else {
+        markers[id].setLatLng([p.lat, p.lng]);
+      }
+    }
+  });
+</script>
+
+</body>
+</html>
