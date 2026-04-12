@@ -176,8 +176,7 @@
       if (p.camping) {
         color = "yellow";
       } else {
-        // only show your team normally
-        if (team && p.team !== team) return;
+ // show ALL players for now (debug mode)
       }
 
       const icon = getDotIcon(color, true);
