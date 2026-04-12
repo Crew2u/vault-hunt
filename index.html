@@ -68,7 +68,15 @@
 
   // 🗺️ MAP
   const map = L.map('map').setView([-27.47, 153.02], 18);
+const battlefieldCenter = [-27.47, 153.02]; // change if needed
 
+const battlefieldZone = L.circle(battlefieldCenter, {
+  radius: 150, // metres (change size here)
+  color: "blue",
+  fillColor: "blue",
+  fillOpacity: 0.1,
+  weight: 2
+}).addTo(map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20
   }).addTo(map);
