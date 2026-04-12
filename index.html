@@ -2,98 +2,131 @@
 <html>
 <head>
   <title>Vault Hunt</title>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Leaflet Map -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- MAP -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family: Arial; }
-    #map { height: 100vh; }
-    #join {
+    body { margin:0; font-family:Arial; }
+    #map { height:100vh; }
+
+    #menu {
       position:absolute;
-      top:20px;
-      left:20px;
+      top:10px;
+      left:10px;
       background:white;
       padding:10px;
-      z-index:1000;
+      z-index:999;
+      border-radius:8px;
+    }
+
+    button {
+      margin:5px;
+      padding:8px;
     }
   </style>
 </head>
 
 <body>
 
-<div id="join">
-  <input id="name" placeholder="Your name"><br><br>
+<div id="menu">
+  <input id="name" placeholder="Name"><br><br>
   <button onclick="join('red')">Join Red</button>
   <button onclick="join('green')">Join Green</button>
 </div>
 
 <div id="map"></div>
 
+<!-- MAP -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js"></script>
+<!-- FIREBASE (v8 SIMPLE VERSION) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
-  // 🔥 PASTE YOUR FIREBASE CONFIG HERE
+
+  // 🔥 YOUR FIREBASE CONFIG (PASTE YOUR OWN)
   const firebaseConfig = {
-    apiKey: "PASTE HERE",
-    authDomain: "PASTE HERE",
-    databaseURL: "PASTE HERE",
-    projectId: "PASTE HERE",
+    apiKey: "PASTE",
+    authDomain: "PASTE",
+    databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "PASTE"
   };
 
-  const app = firebase.initializeApp(firebaseConfig);
+  firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  let playerId = Date.now().toString();
+  let playerId = Math.random().toString(36).substr(2, 9);
   let team = null;
 
-  // 🗺️ MAP
+  // 🗺️ MAP START
   const map = L.map('map').setView([-27.47, 153.02], 18);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
-    .addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20
+  }).addTo(map);
 
   const markers = {};
 
+  // 🚀 JOIN GAME
   function join(selectedTeam) {
+
     team = selectedTeam;
-    document.getElementById("join").style.display = "none";
+    document.getElementById("menu").style.display = "none";
+
+    if (!navigator.geolocation) {
+      alert("GPS not supported");
+      return;
+    }
 
     navigator.geolocation.watchPosition((pos) => {
+
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
 
-      // update firebase
+      // SEND TO FIREBASE
       db.ref("players/" + playerId).set({
-        lat, lng, team
+        lat: lat,
+        lng: lng,
+        team: team
       });
 
       map.setView([lat, lng]);
+
+    }, (err) => {
+      alert("GPS error: " + err.message);
+    }, {
+      enableHighAccuracy: true
     });
   }
 
-  // 👀 LISTEN FOR PLAYERS
-  db.ref("players").on("value", (snapshot) => {
-    const players = snapshot.val();
+  // 👀 LISTEN FOR ALL PLAYERS
+  db.ref("players").on("value", (snap) => {
 
-    for (let id in players) {
-      const p = players[id];
+    const data = snap.val();
+    if (!data) return;
+
+    Object.keys(data).forEach(id => {
+
+      const p = data[id];
+      if (!p.lat || !p.lng) return;
 
       if (!markers[id]) {
         markers[id] = L.circleMarker([p.lat, p.lng], {
-          radius: 8,
+          radius: 10,
           color: p.team === "red" ? "red" : "green"
         }).addTo(map);
       } else {
         markers[id].setLatLng([p.lat, p.lng]);
       }
-    }
+
+    });
+
   });
+
 </script>
 
 </body>
