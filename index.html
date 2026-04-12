@@ -4,7 +4,6 @@
   <title>Vault Hunt</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Leaflet Map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
@@ -23,7 +22,7 @@
 
     button { margin:5px; padding:8px; }
 
-    /* 🔴🟢 BLINK EFFECT */
+    /* 🔴🟢 BLINKING DOT */
     @keyframes pulse {
       0% { transform: scale(1); opacity: 1; }
       50% { transform: scale(1.7); opacity: 0.5; }
@@ -42,10 +41,9 @@
 
 <div id="map"></div>
 
-<!-- MAP -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Firebase v8 (IMPORTANT - DO NOT CHANGE) -->
+<!-- Firebase v8 (IMPORTANT) -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -68,7 +66,7 @@
   let playerId = Math.random().toString(36).substr(2, 9);
   let team = null;
 
-  // 🗺️ MAP INIT
+  // 🗺️ MAP
   const map = L.map('map').setView([-27.47, 153.02], 18);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -77,7 +75,7 @@
 
   const markers = {};
 
-  // 🎯 DOT ICON (NO CIRCLES)
+  // 🎯 DOT ICON
   function getDotIcon(color) {
     return L.divIcon({
       className: "",
@@ -112,13 +110,14 @@
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
 
-      console.log("GPS:", lat, lng, team);
+      console.log("GPS:", lat, lng);
 
-      // 🔥 SEND PLAYER TO FIREBASE
+      // 🔥 SEND PLAYER TO FIREBASE (WITH TIMESTAMP)
       db.ref("players/" + playerId).set({
         lat: lat,
         lng: lng,
-        team: team
+        team: team,
+        lastSeen: Date.now()
       });
 
       map.setView([lat, lng]);
@@ -136,15 +135,19 @@
     const data = snap.val();
     if (!data) return;
 
+    const now = Date.now();
+
     Object.keys(data).forEach(id => {
 
       const p = data[id];
 
       if (!p.lat || !p.lng) return;
 
+      // 🧹 REMOVE OLD / DEAD PLAYERS (15 sec timeout)
+      if (now - p.lastSeen > 15000) return;
+
       let color = p.team === "red" ? "red" : "green";
 
-      // ❗ SHOW ALL PLAYERS (NO FILTERING YET)
       const icon = getDotIcon(color);
 
       if (!markers[id]) {
