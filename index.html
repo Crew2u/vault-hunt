@@ -27,6 +27,19 @@
       50% { transform: scale(1.7); opacity: 0.5; }
       100% { transform: scale(1); opacity: 1; }
     }
+
+    #warning {
+      position:absolute;
+      bottom:20px;
+      left:50%;
+      transform:translateX(-50%);
+      background:red;
+      color:white;
+      padding:10px 20px;
+      border-radius:8px;
+      display:none;
+      z-index:999;
+    }
   </style>
 </head>
 
@@ -38,133 +51,166 @@
   <button onclick="join('green')">Join Green</button>
 </div>
 
+<div id="warning">⚠ RETURN TO BATTLEFIELD</div>
+
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Firebase v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
-    authDomain: "vault-hunt.firebaseapp.com",
-    databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "vault-hunt",
-    storageBucket: "vault-hunt.firebasestorage.app",
-    messagingSenderId: "20936293554",
-    appId: "1:20936293554:web:6852633237b32b02c29dab"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
+  authDomain: "vault-hunt.firebaseapp.com",
+  databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "vault-hunt",
+  storageBucket: "vault-hunt.firebasestorage.app",
+  messagingSenderId: "20936293554",
+  appId: "1:20936293554:web:6852633237b32b02c29dab"
+};
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-  let playerId = Math.random().toString(36).substr(2, 9);
-  let team = null;
+let playerId = Math.random().toString(36).substr(2, 9);
+let team = null;
 
-  // 🗺️ MAP
-  const map = L.map('map').setView([-27.47, 153.02], 18);
+const map = L.map('map').setView([-27.47, 153.02], 18);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20
-  }).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 20
+}).addTo(map);
 
-  // 🔵 BATTLEFIELD ZONE
-  const battlefieldCenter = [-27.47, 153.02];
+// 🟦 CUSTOM BATTLEFIELD SHAPE (EDIT THESE POINTS)
+const battlefieldCoords = [
+  [-26.410576, 152.925350],
+  [-26.410366, 152.926038],
+  [-26.410319, 152.926016],
+  [-26.410285, 152.926102],
+  [-26.410297, 152.926128],
+  [-26.410200, 152.926429],
+  [-26.410081, 152.926291],
+  [-26.410020, 152.926272],
+  [-26.409833, 152.926069],
+  [-26.409810, 152.926023],
+  [-26.409807, 152.925945],
+  [-26.409696, 152.925928],
+  [-26.409707, 152.925760],
+  [-26.409786, 152.925749],
+  [-26.409809, 152.925480],
+  [-26.410572, 152.925348],
+];
 
-  const battlefieldZone = L.circle(battlefieldCenter, {
-    radius: 150, // change size here
-    color: "blue",
-    fillColor: "blue",
-    fillOpacity: 0.1,
-    weight: 2
-  }).addTo(map);
+const battlefield = L.polygon(battlefieldCoords, {
+  color: "blue",
+  fillColor: "blue",
+  fillOpacity: 0.1
+}).addTo(map);
 
-  const markers = {};
+// 📍 CHECK IF INSIDE SHAPE
+function isInside(lat, lng) {
+  let inside = false;
+  for (let i = 0, j = battlefieldCoords.length - 1; i < battlefieldCoords.length; j = i++) {
+    const xi = battlefieldCoords[i][0], yi = battlefieldCoords[i][1];
+    const xj = battlefieldCoords[j][0], yj = battlefieldCoords[j][1];
 
-  function getDotIcon(color) {
-    return L.divIcon({
-      className: "",
-      html: `
-        <div style="
-          width:12px;
-          height:12px;
-          border-radius:50%;
-          background:${color};
-          box-shadow:0 0 8px ${color};
-          animation:pulse 1s infinite;
-        "></div>
-      `,
-      iconSize: [12, 12],
-      iconAnchor: [6, 6]
-    });
+    const intersect =
+      ((yi > lng) != (yj > lng)) &&
+      (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+
+    if (intersect) inside = !inside;
   }
+  return inside;
+}
 
-  function join(selectedTeam) {
+const markers = {};
 
-    team = selectedTeam;
-    document.getElementById("menu").style.display = "none";
+function getDotIcon(color) {
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="
+        width:12px;
+        height:12px;
+        border-radius:50%;
+        background:${color};
+        box-shadow:0 0 8px ${color};
+        animation:pulse 1s infinite;
+      "></div>
+    `,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6]
+  });
+}
 
-    if (!navigator.geolocation) {
-      alert("GPS not supported");
+function join(selectedTeam) {
+
+  team = selectedTeam;
+  document.getElementById("menu").style.display = "none";
+
+  navigator.geolocation.watchPosition((pos) => {
+
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+
+    // 🔥 SAVE PLAYER
+    db.ref("players/" + playerId).set({
+      lat, lng, team, lastSeen: Date.now()
+    });
+
+    // 🔥 AUTO DELETE ON DISCONNECT (KEY FIX)
+    db.ref("players/" + playerId).onDisconnect().remove();
+
+    map.setView([lat, lng]);
+
+    // 🚨 OUT OF BOUNDS WARNING
+    if (!isInside(lat, lng)) {
+      document.getElementById("warning").style.display = "block";
+    } else {
+      document.getElementById("warning").style.display = "none";
+    }
+
+  }, (err) => {
+    alert(err.message);
+  }, {
+    enableHighAccuracy: true
+  });
+}
+
+// 👀 LIVE PLAYERS
+db.ref("players").on("value", (snap) => {
+
+  const data = snap.val();
+  if (!data) return;
+
+  const now = Date.now();
+
+  Object.keys(data).forEach(id => {
+
+    const p = data[id];
+    if (!p.lat || !p.lng) return;
+
+    // 🧹 HARD CLEAN OLD PLAYERS
+    if (now - p.lastSeen > 10000) {
+      db.ref("players/" + id).remove();
       return;
     }
 
-    navigator.geolocation.watchPosition((pos) => {
+    let color = p.team === "red" ? "red" : "green";
+    const icon = getDotIcon(color);
 
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-
-      // 🔥 SEND PLAYER DATA
-      db.ref("players/" + playerId).set({
-        lat: lat,
-        lng: lng,
-        team: team,
-        lastSeen: Date.now()
-      });
-
-      map.setView([lat, lng]);
-
-    }, (err) => {
-      alert("GPS error: " + err.message);
-    }, {
-      enableHighAccuracy: true
-    });
-  }
-
-  // 👀 LIVE PLAYERS
-  db.ref("players").on("value", (snap) => {
-
-    const data = snap.val();
-    if (!data) return;
-
-    const now = Date.now();
-
-    Object.keys(data).forEach(id => {
-
-      const p = data[id];
-
-      if (!p.lat || !p.lng) return;
-
-      // 🧹 REMOVE OLD PLAYERS
-      if (now - p.lastSeen > 15000) return;
-
-      let color = p.team === "red" ? "red" : "green";
-      const icon = getDotIcon(color);
-
-      if (!markers[id]) {
-        markers[id] = L.marker([p.lat, p.lng], { icon }).addTo(map);
-      } else {
-        markers[id]
-          .setLatLng([p.lat, p.lng])
-          .setIcon(icon);
-      }
-
-    });
+    if (!markers[id]) {
+      markers[id] = L.marker([p.lat, p.lng], { icon }).addTo(map);
+    } else {
+      markers[id].setLatLng([p.lat, p.lng]).setIcon(icon);
+    }
 
   });
+
+});
 
 </script>
 
