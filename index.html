@@ -22,7 +22,6 @@
 
     button { margin:5px; padding:8px; }
 
-    /* 🔴🟢 BLINKING DOT */
     @keyframes pulse {
       0% { transform: scale(1); opacity: 1; }
       50% { transform: scale(1.7); opacity: 0.5; }
@@ -43,13 +42,12 @@
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Firebase v8 (IMPORTANT) -->
+<!-- Firebase v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
 
-  // 🔥 FIREBASE CONFIG (YOUR PROJECT)
   const firebaseConfig = {
     apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
     authDomain: "vault-hunt.firebaseapp.com",
@@ -68,22 +66,24 @@
 
   // 🗺️ MAP
   const map = L.map('map').setView([-27.47, 153.02], 18);
-const battlefieldCenter = [-27.47, 153.02]; // change if needed
 
-const battlefieldZone = L.circle(battlefieldCenter, {
-  radius: 150, // metres (change size here)
-  color: "blue",
-  fillColor: "blue",
-  fillOpacity: 0.1,
-  weight: 2
-}).addTo(map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 20
   }).addTo(map);
 
+  // 🔵 BATTLEFIELD ZONE
+  const battlefieldCenter = [-27.47, 153.02];
+
+  const battlefieldZone = L.circle(battlefieldCenter, {
+    radius: 150, // change size here
+    color: "blue",
+    fillColor: "blue",
+    fillOpacity: 0.1,
+    weight: 2
+  }).addTo(map);
+
   const markers = {};
 
-  // 🎯 DOT ICON
   function getDotIcon(color) {
     return L.divIcon({
       className: "",
@@ -102,7 +102,6 @@ const battlefieldZone = L.circle(battlefieldCenter, {
     });
   }
 
-  // 🚀 JOIN GAME
   function join(selectedTeam) {
 
     team = selectedTeam;
@@ -118,9 +117,7 @@ const battlefieldZone = L.circle(battlefieldCenter, {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
 
-      console.log("GPS:", lat, lng);
-
-      // 🔥 SEND PLAYER TO FIREBASE (WITH TIMESTAMP)
+      // 🔥 SEND PLAYER DATA
       db.ref("players/" + playerId).set({
         lat: lat,
         lng: lng,
@@ -137,7 +134,7 @@ const battlefieldZone = L.circle(battlefieldCenter, {
     });
   }
 
-  // 👀 LIVE PLAYER DISPLAY
+  // 👀 LIVE PLAYERS
   db.ref("players").on("value", (snap) => {
 
     const data = snap.val();
@@ -151,11 +148,10 @@ const battlefieldZone = L.circle(battlefieldCenter, {
 
       if (!p.lat || !p.lng) return;
 
-      // 🧹 REMOVE OLD / DEAD PLAYERS (15 sec timeout)
+      // 🧹 REMOVE OLD PLAYERS
       if (now - p.lastSeen > 15000) return;
 
       let color = p.team === "red" ? "red" : "green";
-
       const icon = getDotIcon(color);
 
       if (!markers[id]) {
@@ -171,6 +167,9 @@ const battlefieldZone = L.circle(battlefieldCenter, {
   });
 
 </script>
+
+</body>
+</html>
 
 </body>
 </html>
