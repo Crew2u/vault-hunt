@@ -1,1 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Vault Hunt</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    body { margin:0; font-family:Arial; }
+    #map { height:100vh; }
+
+    #menu {
+      position:absolute;
+      top:10px;
+      left:10px;
+      background:white;
+      padding:10px;
+      z-index:999;
+      border-radius:8px;
+    }
+
+    button { margin:5px; padding:8px; }
+
+    /* 🔥 BLINK ANIMATION */
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.7); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="menu">
+  <input id="name" placeholder="Name"><br><br>
+  <button onclick="join('red')">Join Red</button>
+  <button onclick="join('green')">Join Green</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- Firebase (simple v8 for beginners) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+
+  // 🔥 YOUR FIREBASE CONFIG (REPLACE THIS)
+  const firebaseConfig = {
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
+  authDomain: "vault-hunt.firebaseapp.com",
+  projectId: "vault-hunt",
+  storageBucket: "vault-hunt.firebasestorage.app",
+  messagingSenderId: "20936293554",
+  appId: "1:20936293554:web:6852633237b32b02c29dab"
+};
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  let playerId = Math.random().toString(36).substr(2, 9);
+  let team = null;
+
+  // 🗺️ MAP
+  const map = L.map('map').setView([-27.47, 153.02], 18);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20
+  }).addTo(map);
+
+  const markers = {};
+
+  // 🎯 DOT ICON (NO CIRCLES)
+  function getDotIcon(color, pulsing) {
+    return L.divIcon({
+      className: "",
+      html: `
+        <div style="
+          width:12px;
+          height:12px;
+          border-radius:50%;
+          background:${color};
+          box-shadow:0 0 8px ${color};
+          animation:${pulsing ? "pulse 1s infinite" : "none"};
+        "></div>
+      `,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+  }
+
+  // 📏 DISTANCE CALC (meters)
+  function distance(aLat, aLng, bLat, bLng) {
+    const R = 6371e3;
+    const φ1 = aLat * Math.PI/180;
+    const φ2 = bLat * Math.PI/180;
+    const dφ = (bLat-aLat) * Math.PI/180;
+    const dλ = (bLng-aLng) * Math.PI/180;
+
+    const a = Math.sin(dφ/2)**2 +
+              Math.cos(φ1)*Math.cos(φ2) *
+              Math.sin(dλ/2)**2;
+
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  let lastLat = null;
+  let lastLng = null;
+  let lastMoveTime = Date.now();
+
+  // 🚀 JOIN GAME
+  function join(selectedTeam) {
+
+    team = selectedTeam;
+    document.getElementById("menu").style.display = "none";
+
+    if (!navigator.geolocation) {
+      alert("GPS not supported");
+      return;
+    }
+
+    navigator.geolocation.watchPosition((pos) => {
+
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      // 🧠 CHECK MOVEMENT (ANTI CAMP)
+      if (lastLat !== null) {
+        const moved = distance(lastLat, lastLng, lat, lng);
+
+        if (moved > 5) {
+          lastMoveTime = Date.now();
+        }
+      }
+
+      lastLat = lat;
+      lastLng = lng;
+
+      const camping = (Date.now() - lastMoveTime) > 60000;
+
+      // 🔥 SEND TO FIREBASE
+      db.ref("players/" + playerId).set({
+        lat,
+        lng,
+        team,
+        camping
+      });
+
+      map.setView([lat, lng]);
+
+    }, (err) => {
+      alert("GPS error: " + err.message);
+    }, {
+      enableHighAccuracy: true
+    });
+  }
+
+  // 👀 LIVE PLAYER DISPLAY
+  db.ref("players").on("value", (snap) => {
+
+    const data = snap.val();
+    if (!data) return;
+
+    Object.keys(data).forEach(id => {
+
+      const p = data[id];
+
+      if (!p.lat || !p.lng) return;
+
+      let color = p.team;
+
+      // 🚨 CAMPING OVERRIDE (VISIBLE TO ALL)
+      if (p.camping) {
+        color = "yellow";
+      } else {
+        // only show your team normally
+        if (team && p.team !== team) return;
+      }
+
+      const icon = getDotIcon(color, true);
+
+      if (!markers[id]) {
+        markers[id] = L.marker([p.lat, p.lng], { icon }).addTo(map);
+      } else {
+        markers[id]
+          .setLatLng([p.lat, p.lng])
+          .setIcon(icon);
+      }
+
+    });
+
+  });
+
+</script>
+
+</body>
+</html>
