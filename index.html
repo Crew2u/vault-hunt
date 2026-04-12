@@ -78,13 +78,15 @@ const db = firebase.database();
 let playerId = Math.random().toString(36).substr(2, 9);
 let team = null;
 
-const map = L.map('map').setView([-27.47, 153.02], 18);
+// 🗺️ MAP (AUTO-CENTER REMOVED - WILL USE FIT BOUNDS)
+const map = L.map('map');
 
+// 🗺️ TILE LAYER
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 20
 }).addTo(map);
 
-// 🟦 CUSTOM BATTLEFIELD SHAPE (EDIT THESE POINTS)
+// 🟦 CUSTOM BATTLEFIELD
 const battlefieldCoords = [
   [-26.410576, 152.925350],
   [-26.410366, 152.926038],
@@ -101,16 +103,20 @@ const battlefieldCoords = [
   [-26.409707, 152.925760],
   [-26.409786, 152.925749],
   [-26.409809, 152.925480],
-  [-26.410572, 152.925348],
+  [-26.410572, 152.925348]
 ];
 
 const battlefield = L.polygon(battlefieldCoords, {
   color: "blue",
   fillColor: "blue",
-  fillOpacity: 0.1
+  fillOpacity: 0.1,
+  weight: 2
 }).addTo(map);
 
-// 📍 CHECK IF INSIDE SHAPE
+// ✅ AUTO FIT MAP TO BATTLEFIELD
+map.fitBounds(battlefield.getBounds());
+
+// 📍 CHECK INSIDE POLYGON
 function isInside(lat, lng) {
   let inside = false;
   for (let i = 0, j = battlefieldCoords.length - 1; i < battlefieldCoords.length; j = i++) {
@@ -156,17 +162,16 @@ function join(selectedTeam) {
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
 
-    // 🔥 SAVE PLAYER
     db.ref("players/" + playerId).set({
       lat, lng, team, lastSeen: Date.now()
     });
 
-    // 🔥 AUTO DELETE ON DISCONNECT (KEY FIX)
+    // 🔥 remove player on disconnect
     db.ref("players/" + playerId).onDisconnect().remove();
 
     map.setView([lat, lng]);
 
-    // 🚨 OUT OF BOUNDS WARNING
+    // 🚨 boundary warning
     if (!isInside(lat, lng)) {
       document.getElementById("warning").style.display = "block";
     } else {
@@ -193,7 +198,7 @@ db.ref("players").on("value", (snap) => {
     const p = data[id];
     if (!p.lat || !p.lng) return;
 
-    // 🧹 HARD CLEAN OLD PLAYERS
+    // 🧹 remove stale players
     if (now - p.lastSeen > 10000) {
       db.ref("players/" + id).remove();
       return;
@@ -213,9 +218,6 @@ db.ref("players").on("value", (snap) => {
 });
 
 </script>
-
-</body>
-</html>
 
 </body>
 </html>
