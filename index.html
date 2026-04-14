@@ -226,6 +226,57 @@ db.ref("game").on("value",snap=>{
 });
 
 </script>
+const markers = {};
 
+// 🎯 DOT ICON
+function getDot(color){
+  return L.divIcon({
+    className:"",
+    html: `
+      <div style="
+        width:12px;
+        height:12px;
+        border-radius:50%;
+        background:${color};
+        box-shadow:0 0 10px ${color};
+      "></div>
+    `,
+    iconSize:[12,12],
+    iconAnchor:[6,6]
+  });
+}
+
+// 👀 LIVE PLAYER STREAM
+db.ref("players").on("value", snap => {
+
+  const data = snap.val();
+  if(!data) return;
+
+  Object.keys(data).forEach(id => {
+
+    const p = data[id];
+    if(!p.lat || !p.lng) return;
+
+    // 🎨 TEAM COLOR
+    const color = p.team === "red" ? "red" : "lime";
+
+    const icon = getDot(color);
+
+    // ➕ CREATE MARKER
+    if(!markers[id]){
+      markers[id] = L.marker([p.lat, p.lng], {
+        icon
+      }).addTo(map);
+    }
+
+    // 🔄 UPDATE POSITION
+    else {
+      markers[id]
+        .setLatLng([p.lat, p.lng])
+        .setIcon(icon);
+    }
+  });
+
+});
 </body>
 </html>
