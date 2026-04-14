@@ -108,7 +108,9 @@ if(!playerId){
 
 let team = null;
 let playerName = "";
-
+let pLastLat;
+let pLastLng;
+let lastMoveTime = Date.now();
 /* ================= MAP ================= */
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
@@ -184,13 +186,39 @@ function join(selectedTeam){
 
     const lat=pos.coords.latitude;
     const lng=pos.coords.longitude;
+// 🧠 MOVEMENT DETECTION
+let moved = true;
 
-    db.ref("players/"+playerId).set({
-      lat,lng,
-      team,
-      name:playerName,
-      lastSeen:Date.now()
-    });
+if (pLastLat !== undefined) {
+
+  const d = map.distance(
+    [pLastLat, pLastLng],
+    [lat, lng]
+  );
+
+  if (d > 5) {
+    moved = true;
+    lastMoveTime = Date.now();
+  } else {
+    moved = false;
+  }
+}
+
+// store last position
+pLastLat = lat;
+pLastLng = lng;
+
+// ⏱️ CAMP CHECK (60 seconds)
+const camped = (Date.now() - lastMoveTime) > 60000;
+   db.ref("players/"+playerId).set({
+  lat,
+  lng,
+  team,
+  name: playerName,
+  lastSeen: Date.now(),
+  lastMoveTime: lastMoveTime,
+  camped: camped
+});
 
     map.setView([lat,lng]);
 
