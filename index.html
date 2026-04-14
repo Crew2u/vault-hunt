@@ -7,64 +7,22 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; background:black; color:white; }
+    body { margin:0; font-family:Arial; background:black; }
+
     #map { height:100vh; }
 
-    /* 🎮 LOBBY SCREEN */
-    #lobby {
-      position:fixed;
-      top:0; left:0;
-      width:100%; height:100%;
-      background:black;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      align-items:center;
-      z-index:2000;
-    }
-
-    #lobby h1 { font-size:28px; margin-bottom:20px; }
-
-    input {
-      padding:10px;
-      font-size:16px;
-      margin-bottom:20px;
-      width:200px;
-    }
-
-    .teamBtn {
-      padding:15px 25px;
-      margin:10px;
-      font-size:18px;
-      border:none;
-      border-radius:10px;
-    }
-
-    .red { background:red; color:white; }
-    .green { background:limegreen; color:black; }
-
-    /* 🎯 HUD */
+    /* 🎮 HUD OVERLAY */
     #hud {
       position:absolute;
       top:10px;
       right:10px;
-      background:rgba(0,0,0,0.7);
-      padding:10px;
+      background:rgba(0,0,0,0.75);
+      color:white;
+      padding:12px;
       border-radius:10px;
       z-index:1000;
       font-size:14px;
-    }
-
-    #warning {
-      position:absolute;
-      bottom:20px;
-      left:50%;
-      transform:translateX(-50%);
-      background:red;
-      padding:10px 20px;
-      border-radius:8px;
-      display:none;
-      z-index:1000;
+      min-width:180px;
     }
 
     .blink {
@@ -75,6 +33,49 @@
       50% { opacity: 0.3; }
     }
 
+    /* ⚠ WARNING */
+    #warning {
+      position:absolute;
+      bottom:20px;
+      left:50%;
+      transform:translateX(-50%);
+      background:red;
+      color:white;
+      padding:10px 20px;
+      border-radius:8px;
+      display:none;
+      z-index:1000;
+    }
+
+    /* 🎯 LOBBY */
+    #lobby {
+      position:fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      background:black;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      z-index:2000;
+      color:white;
+    }
+
+    input {
+      padding:10px;
+      margin:10px;
+      font-size:16px;
+    }
+
+    button {
+      padding:12px 20px;
+      margin:8px;
+      font-size:16px;
+    }
+
+    .red { background:red; color:white; }
+    .green { background:green; color:white; }
+
   </style>
 </head>
 
@@ -83,14 +84,17 @@
 <!-- 🎮 LOBBY -->
 <div id="lobby">
   <h1>VAULT HUNT</h1>
-  <input id="name" placeholder="Enter Name" required>
-  <button class="teamBtn red" onclick="join('red')">Join Red</button>
-  <button class="teamBtn green" onclick="join('green')">Join Green</button>
+  <input id="name" placeholder="Enter Name">
+  <button class="red" onclick="join('red')">Join Red</button>
+  <button class="green" onclick="join('green')">Join Green</button>
 </div>
 
+<!-- 📊 HUD -->
 <div id="hud">
-  🔴 <span id="redTime">0</span>s | 💀 <span id="redDeaths">0</span><br>
-  🟢 <span id="greenTime">0</span>s | 💀 <span id="greenDeaths">0</span>
+  🔴 Red: <span id="redTime">0</span>s | 💀 <span id="redDeaths">0</span><br>
+  🟢 Green: <span id="greenTime">0</span>s | 💀 <span id="greenDeaths">0</span><br>
+  <hr>
+  🏆 <span id="leader">-</span>
 </div>
 
 <div id="warning">⚠ RETURN TO BATTLEFIELD</div>
@@ -102,9 +106,9 @@
 
 <script>
 
-// 🔥 CONFIG
+// 🔥 FIREBASE
 const firebaseConfig = {
-  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
+  apiKey: "YOUR_KEY",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
@@ -112,41 +116,27 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// SETTINGS
-const SAFE = { lat: -26.4103, lng: 152.9258 };
-const RED_RESPAWN = { lat: -26.409881, lng: 152.926144 };
-const GREEN_RESPAWN = { lat: -26.410194, lng: 152.925604
-
- };
-
-const CAPTURE_RADIUS = 3;
-const RESPAWN_RADIUS = 3;
-const DEATH_COOLDOWN = 10000;
-
-// PLAYER ID
+// 🔑 PLAYER ID
 let playerId = localStorage.getItem("playerId");
-if (!playerId) {
-  playerId = Math.random().toString(36).substr(2, 9);
-  localStorage.setItem("playerId", playerId);
+if(!playerId){
+  playerId = Math.random().toString(36).substr(2,9);
+  localStorage.setItem("playerId",playerId);
 }
 
 let team = null;
 let playerName = "";
-let lastDeath = 0;
 
-// MAP
+// 🗺️ MAP
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// MARKERS
-L.marker([SAFE.lat, SAFE.lng]).addTo(map).bindPopup("💰 SAFE");
-L.marker([RED_RESPAWN.lat, RED_RESPAWN.lng]).addTo(map).bindPopup("🔴 Respawn");
-L.marker([GREEN_RESPAWN.lat, GREEN_RESPAWN.lng]).addTo(map).bindPopup("🟢 Respawn");
+// 🧭 SAFE ZONE
+const SAFE = {lat:-26.4103,lng:152.9258};
 
-// DISTANCE FUNCTION
-function distance(a,b){
-  const R=6371000;
+// 📏 DISTANCE
+function dist(a,b){
+  const R=6371e3;
   const dLat=(b.lat-a.lat)*Math.PI/180;
   const dLng=(b.lng-a.lng)*Math.PI/180;
   const x=Math.sin(dLat/2)**2+
@@ -154,19 +144,19 @@ function distance(a,b){
   return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
 }
 
-// JOIN
+// 🚀 JOIN
 function join(selectedTeam){
 
-  playerName = document.getElementById("name").value.trim();
-  if(!playerName){ alert("Enter name"); return; }
+  playerName=document.getElementById("name").value;
+  if(!playerName){alert("Enter name");return;}
 
-  team = selectedTeam;
+  team=selectedTeam;
   document.getElementById("lobby").style.display="none";
 
   navigator.geolocation.watchPosition(pos=>{
 
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
+    const lat=pos.coords.latitude;
+    const lng=pos.coords.longitude;
 
     db.ref("players/"+playerId).set({
       lat,lng,team,name:playerName,lastSeen:Date.now()
@@ -174,36 +164,44 @@ function join(selectedTeam){
 
     map.setView([lat,lng]);
 
-    // CAPTURE CHECK
-    if(distance({lat,lng},SAFE) < CAPTURE_RADIUS){
+    // 🎯 CAPTURE
+    if(dist({lat,lng},SAFE)<3){
       db.ref("game/"+team+"Time").transaction(v=>(v||0)+1);
-    }
-
-    // RESPAWN DEATH
-    const respawn = team==="red"?RED_RESPAWN:GREEN_RESPAWN;
-
-    if(distance({lat,lng},respawn) < RESPAWN_RADIUS){
-      if(Date.now()-lastDeath > DEATH_COOLDOWN){
-        db.ref("game/"+team+"Deaths").transaction(v=>(v||0)+1);
-        lastDeath = Date.now();
-      }
     }
 
   },err=>alert(err.message),{enableHighAccuracy:true});
 }
 
-// SCOREBOARD LIVE
+// 📊 LIVE SCOREBOARD HUD
 db.ref("game").on("value",snap=>{
+
   const g=snap.val()||{};
-  document.getElementById("redTime").innerText = g.redTime||0;
-  document.getElementById("greenTime").innerText = g.greenTime||0;
-  document.getElementById("redDeaths").innerText = g.redDeaths||0;
-  document.getElementById("greenDeaths").innerText = g.greenDeaths||0;
+
+  const red=g.redTime||0;
+  const green=g.greenTime||0;
+
+  document.getElementById("redTime").innerText=red;
+  document.getElementById("greenTime").innerText=green;
+  document.getElementById("redDeaths").innerText=g.redDeaths||0;
+  document.getElementById("greenDeaths").innerText=g.greenDeaths||0;
+
+  // 🏆 LEADER
+  let leader="-";
+  if(red>green) leader="🔴 Red Leading";
+  if(green>red) leader="🟢 Green Leading";
+
+  const leadEl=document.getElementById("leader");
+  leadEl.innerText=leader;
+
+  if(red!==green){
+    leadEl.classList.add("blink");
+  } else {
+    leadEl.classList.remove("blink");
+  }
+
 });
 
 </script>
 
-</body>
-</html>
 </body>
 </html>
