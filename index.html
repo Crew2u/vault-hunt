@@ -1,47 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt - MASTER BUILD</title>
+  <title>Vault Hunt - Stable Build</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; background:black; }
+    body { margin:0; font-family:Arial; }
     #map { height:100vh; }
 
     /* LOBBY */
     #lobby {
       position:fixed;
       inset:0;
-      background:black;
+      background:#0b0f14;
       display:flex;
       flex-direction:column;
       justify-content:center;
       align-items:center;
-      z-index:2000;
       color:white;
+      z-index:9999;
     }
 
     #lobby h1 {
       color:#00ff9d;
       letter-spacing:2px;
+      margin-bottom:10px;
     }
 
     input {
       padding:10px;
       margin:10px;
-      width:200px;
+      width:220px;
       text-align:center;
+      font-size:16px;
     }
 
     button {
-      padding:10px 20px;
-      margin:5px;
+      padding:12px 20px;
+      margin:6px;
+      font-size:15px;
+      cursor:pointer;
     }
 
-    .red { background:red; color:white; }
-    .green { background:green; color:white; }
+    .red { background:#ff2b2b; color:white; border:none; }
+    .green { background:#00c853; color:white; border:none; }
 
     /* HUD */
     #hud {
@@ -53,8 +57,8 @@
       padding:10px;
       border-radius:10px;
       z-index:1000;
-      font-size:14px;
       min-width:180px;
+      font-size:14px;
     }
 
     /* WARNING */
@@ -79,20 +83,19 @@
 <div id="lobby">
   <h1>VAULT HUNT</h1>
   <input id="name" placeholder="Enter Name">
-  <button class="red" onclick="join('red')">Join Red</button>
-  <button class="green" onclick="join('green')">Join Green</button>
+  <button class="red" onclick="join('red')">Join Red Team</button>
+  <button class="green" onclick="join('green')">Join Green Team</button>
 </div>
 
 <!-- 📊 HUD -->
 <div id="hud">
-  🔴 Red: <span id="redTime">0</span>s<br>
-  🟢 Green: <span id="greenTime">0</span>s<br>
+  🔴 Red Time: <span id="redTime">0</span>s<br>
+  🟢 Green Time: <span id="greenTime">0</span>s<br>
   💀 Red Deaths: <span id="redDeaths">0</span><br>
   💀 Green Deaths: <span id="greenDeaths">0</span>
 </div>
 
 <div id="warning">⚠ OUT OF BATTLEFIELD</div>
-
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -101,9 +104,7 @@
 
 <script>
 
-/* =========================
-   🔥 FIREBASE
-========================= */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
   apiKey: "YOUR_KEY",
   authDomain: "vault-hunt.firebaseapp.com",
@@ -113,9 +114,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* =========================
-   🔑 PLAYER ID (NO EXPLOITS)
-========================= */
+/* ================= PLAYER ID ================= */
 let playerId = localStorage.getItem("playerId");
 if(!playerId){
   playerId = Math.random().toString(36).substr(2,9);
@@ -125,9 +124,7 @@ if(!playerId){
 let team = null;
 let playerName = "";
 
-/* =========================
-   🗺️ MAP INIT
-========================= */
+/* ================= MAP ================= */
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
 /* BASE MAPS */
@@ -141,9 +138,7 @@ L.control.layers({
   "Satellite": satellite
 }).addTo(map);
 
-/* =========================
-   🟦 ORIGINAL BATTLEFIELD (RESTORED)
-========================= */
+/* ================= YOUR ORIGINAL BATTLEFIELD ================= */
 const battlefieldCoords = [
   [-26.410576, 152.925350],
   [-26.410366, 152.926038],
@@ -163,34 +158,21 @@ const battlefieldCoords = [
   [-26.410572, 152.925348]
 ];
 
+/* FIELD RENDER */
 const battlefield = L.polygon(battlefieldCoords, {
-  color: "#00bfff",
-  weight: 3,
-  fillColor: "#00bfff",
-  fillOpacity: 0.12
+  color:"#00bfff",
+  weight:3,
+  fillColor:"#00bfff",
+  fillOpacity:0.12
 }).addTo(map);
 
-/* =========================
-   🧱 BARRICADES (TACTICAL OBJECTS)
-========================= */
-const barricades = [
-  [-26.4104,152.9259],
-  [-26.4102,152.9261],
-  [-26.4100,152.9257]
-];
+/* OUTLINE */
+L.polyline([...battlefieldCoords, battlefieldCoords[0]], {
+  color:"#00ffff",
+  weight:1
+}).addTo(map);
 
-barricades.forEach(p=>{
-  L.circleMarker(p,{
-    radius:8,
-    color:"orange",
-    fillColor:"orange",
-    fillOpacity:0.7
-  }).addTo(map).bindPopup("🧱 Cover");
-});
-
-/* =========================
-   📍 INSIDE BOUNDARY CHECK
-========================= */
+/* ================= INSIDE CHECK ================= */
 function isInside(lat,lng){
   let inside=false;
   for(let i=0,j=battlefieldCoords.length-1;i<battlefieldCoords.length;j=i++){
@@ -206,9 +188,7 @@ function isInside(lat,lng){
   return inside;
 }
 
-/* =========================
-   📏 DISTANCE
-========================= */
+/* ================= DISTANCE ================= */
 function dist(a,b){
   const R=6371000;
   const dLat=(b.lat-a.lat)*Math.PI/180;
@@ -220,9 +200,7 @@ function dist(a,b){
   return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
 }
 
-/* =========================
-   🚀 JOIN GAME
-========================= */
+/* ================= JOIN GAME ================= */
 function join(selectedTeam){
 
   playerName=document.getElementById("name").value;
@@ -251,12 +229,12 @@ function join(selectedTeam){
       document.getElementById("warning").style.display="none";
     }
 
-  },err=>alert(err.message),{enableHighAccuracy:true});
+  },err=>alert(err.message),{
+    enableHighAccuracy:true
+  });
 }
 
-/* =========================
-   📊 LIVE SCOREBOARD
-========================= */
+/* ================= SCOREBOARD ================= */
 db.ref("game").on("value",snap=>{
   const g=snap.val()||{};
 
@@ -268,7 +246,5 @@ db.ref("game").on("value",snap=>{
 
 </script>
 
-</body>
-</html>
 </body>
 </html>
