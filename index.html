@@ -210,10 +210,11 @@ pLastLng = lng;
 
 // ⏱️ CAMP CHECK (60 seconds)
 const camped = (Date.now() - lastMoveTime) > 60000;
-   db.ref("players/"+playerId).set({
-  lat,
-  lng,
-  team,
+    console.log("CAMP STATUS:", camped, "LastMove:", lastMoveTime);
+  db.ref("players/"+playerId).update({
+  lat: lat,
+  lng: lng,
+  team: team,
   name: playerName,
   lastSeen: Date.now(),
   lastMoveTime: lastMoveTime,
