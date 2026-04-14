@@ -1,100 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt</title>
+  <title>VAULT HUNT - MILSIM</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; background:black; }
+    body {
+      margin:0;
+      font-family:Arial;
+      background:black;
+      color:white;
+    }
 
     #map { height:100vh; }
 
-    /* 🎮 HUD OVERLAY */
+    /* 🎖️ MILITARY LOBBY */
+    #lobby {
+      position:fixed;
+      inset:0;
+      background:radial-gradient(circle, #1a1a1a, black);
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      z-index:2000;
+    }
+
+    #lobby h1 {
+      font-size:34px;
+      letter-spacing:3px;
+      color:#00ff9d;
+      text-shadow:0 0 10px #00ff9d;
+      margin-bottom:10px;
+    }
+
+    #lobby p {
+      opacity:0.7;
+      margin-bottom:20px;
+    }
+
+    input {
+      padding:12px;
+      font-size:16px;
+      width:220px;
+      margin-bottom:15px;
+      text-align:center;
+      border:none;
+      border-radius:6px;
+    }
+
+    .btn {
+      padding:14px 25px;
+      margin:8px;
+      border:none;
+      border-radius:8px;
+      font-size:16px;
+      cursor:pointer;
+    }
+
+    .red { background:#ff2b2b; color:white; }
+    .green { background:#00c853; color:white; }
+
+    /* 🎯 HUD */
     #hud {
       position:absolute;
       top:10px;
       right:10px;
       background:rgba(0,0,0,0.75);
-      color:white;
       padding:12px;
       border-radius:10px;
       z-index:1000;
       font-size:14px;
-      min-width:180px;
+      min-width:200px;
+      border:1px solid #333;
     }
 
-    .blink {
-      animation: blink 1s infinite;
-    }
-
-    @keyframes blink {
-      50% { opacity: 0.3; }
-    }
-
-    /* ⚠ WARNING */
     #warning {
       position:absolute;
       bottom:20px;
       left:50%;
       transform:translateX(-50%);
       background:red;
-      color:white;
-      padding:10px 20px;
+      padding:10px 18px;
       border-radius:8px;
       display:none;
       z-index:1000;
+      font-weight:bold;
     }
 
-    /* 🎯 LOBBY */
-    #lobby {
-      position:fixed;
-      top:0; left:0;
-      width:100%; height:100%;
-      background:black;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      align-items:center;
-      z-index:2000;
-      color:white;
+    /* 🟦 battlefield glow */
+    .battlefield-label {
+      color:#00d4ff;
+      font-weight:bold;
+      font-size:12px;
     }
-
-    input {
-      padding:10px;
-      margin:10px;
-      font-size:16px;
-    }
-
-    button {
-      padding:12px 20px;
-      margin:8px;
-      font-size:16px;
-    }
-
-    .red { background:red; color:white; }
-    .green { background:green; color:white; }
 
   </style>
 </head>
 
 <body>
 
-<!-- 🎮 LOBBY -->
+<!-- 🎖️ LOBBY -->
 <div id="lobby">
   <h1>VAULT HUNT</h1>
-  <input id="name" placeholder="Enter Name">
-  <button class="red" onclick="join('red')">Join Red</button>
-  <button class="green" onclick="join('green')">Join Green</button>
+  <p>TACTICAL GPS OPERATIONS</p>
+
+  <input id="name" placeholder="CALLSIGN">
+
+  <button class="btn red" onclick="join('red')">JOIN RED TEAM</button>
+  <button class="btn green" onclick="join('green')">JOIN GREEN TEAM</button>
 </div>
 
-<!-- 📊 HUD -->
+<!-- 🎯 HUD -->
 <div id="hud">
-  🔴 Red: <span id="redTime">0</span>s | 💀 <span id="redDeaths">0</span><br>
-  🟢 Green: <span id="greenTime">0</span>s | 💀 <span id="greenDeaths">0</span><br>
-  <hr>
-  🏆 <span id="leader">-</span>
+  🔴 Red: <span id="redTime">0</span>s<br>
+  🟢 Green: <span id="greenTime">0</span>s<br>
+  💀 Red Deaths: <span id="redDeaths">0</span><br>
+  💀 Green Deaths: <span id="greenDeaths">0</span>
 </div>
 
 <div id="warning">⚠ RETURN TO BATTLEFIELD</div>
@@ -129,10 +153,53 @@ let playerName = "";
 // 🗺️ MAP
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// 🟩 BASE MAPS
+const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
 
-// 🧭 SAFE ZONE
-const SAFE = {lat:-26.4103,lng:152.9258};
+street.addTo(map);
+
+L.control.layers({
+  "Street": street,
+  "Satellite": satellite
+}).addTo(map);
+
+// 🟦 BATTLEFIELD ZONE
+const battlefield = [
+  [-26.4106,152.9253],
+  [-26.4102,152.9265],
+  [-26.4097,152.9261],
+  [-26.4098,152.9254]
+];
+
+const zone = L.polygon(battlefield,{
+  color:"#00d4ff",
+  weight:3,
+  fillColor:"#00d4ff",
+  fillOpacity:0.08
+}).addTo(map);
+
+// ✨ glow outline effect
+L.polyline([...battlefield,battlefield[0]],{
+  color:"#00d4ff",
+  weight:1
+}).addTo(map);
+
+// 🧱 BARRICADES (TACTICAL OBJECTS)
+const barricades = [
+  [-26.4104,152.9259],
+  [-26.4101,152.9256],
+  [-26.4100,152.9260]
+];
+
+barricades.forEach(b=>{
+  L.circleMarker(b,{
+    radius:8,
+    color:"orange",
+    fillColor:"orange",
+    fillOpacity:0.6
+  }).addTo(map).bindPopup("🧱 Cover");
+});
 
 // 📏 DISTANCE
 function dist(a,b){
@@ -144,11 +211,11 @@ function dist(a,b){
   return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
 }
 
-// 🚀 JOIN
+// 🚀 JOIN GAME
 function join(selectedTeam){
 
   playerName=document.getElementById("name").value;
-  if(!playerName){alert("Enter name");return;}
+  if(!playerName){alert("Enter callsign");return;}
 
   team=selectedTeam;
   document.getElementById("lobby").style.display="none";
@@ -164,41 +231,22 @@ function join(selectedTeam){
 
     map.setView([lat,lng]);
 
-    // 🎯 CAPTURE
-    if(dist({lat,lng},SAFE)<3){
+    // 🎯 CAPTURE ZONE LOGIC
+    if(dist({lat,lng}, {lat:-26.4103,lng:152.9258}) < 3){
       db.ref("game/"+team+"Time").transaction(v=>(v||0)+1);
     }
 
   },err=>alert(err.message),{enableHighAccuracy:true});
 }
 
-// 📊 LIVE SCOREBOARD HUD
+// 📊 LIVE SCOREBOARD
 db.ref("game").on("value",snap=>{
-
   const g=snap.val()||{};
 
-  const red=g.redTime||0;
-  const green=g.greenTime||0;
-
-  document.getElementById("redTime").innerText=red;
-  document.getElementById("greenTime").innerText=green;
+  document.getElementById("redTime").innerText=g.redTime||0;
+  document.getElementById("greenTime").innerText=g.greenTime||0;
   document.getElementById("redDeaths").innerText=g.redDeaths||0;
   document.getElementById("greenDeaths").innerText=g.greenDeaths||0;
-
-  // 🏆 LEADER
-  let leader="-";
-  if(red>green) leader="🔴 Red Leading";
-  if(green>red) leader="🟢 Green Leading";
-
-  const leadEl=document.getElementById("leader");
-  leadEl.innerText=leader;
-
-  if(red!==green){
-    leadEl.classList.add("blink");
-  } else {
-    leadEl.classList.remove("blink");
-  }
-
 });
 
 </script>
