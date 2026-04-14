@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt - FIXED BUILD</title>
+  <title>Vault Hunt - FULL FIX</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
     body { margin:0; font-family:Arial; }
-    #map { height:100vh; width:100vw; }
+    #map { height:100vh; }
 
     #lobby {
       position:fixed;
@@ -66,22 +66,21 @@
 
 <body>
 
+<!-- LOBBY -->
 <div id="lobby">
-  <h1 style="color:#00ff9d;">VAULT HUNT</h1>
+  <h2 style="color:#00ff9d;">VAULT HUNT</h2>
   <input id="name" placeholder="Enter Name">
-  <button class="red" onclick="join('red')">Join Red Team</button>
-  <button class="green" onclick="join('green')">Join Green Team</button>
+  <button class="red" onclick="join('red')">Join Red</button>
+  <button class="green" onclick="join('green')">Join Green</button>
 </div>
 
+<!-- HUD -->
 <div id="hud">
   🔴 Red: <span id="redTime">0</span><br>
-  🟢 Green: <span id="greenTime">0</span><br>
-  💀 Red Deaths: <span id="redDeaths">0</span><br>
-  💀 Green Deaths: <span id="greenDeaths">0</span>
+  🟢 Green: <span id="greenTime">0</span>
 </div>
 
 <div id="warning">⚠ OUT OF BATTLEFIELD</div>
-
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -90,7 +89,7 @@
 
 <script>
 
-/* FIREBASE */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
   apiKey: "YOUR_KEY",
   authDomain: "vault-hunt.firebaseapp.com",
@@ -100,27 +99,27 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER ID */
+/* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId");
 if(!playerId){
   playerId = Math.random().toString(36).substr(2,9);
   localStorage.setItem("playerId",playerId);
 }
 
-let team=null;
-let playerName="";
+let team = null;
+let playerName = "";
+let pLastLat;
+let pLastLng;
+let lastMoveTime = Date.now();
+/* ================= MAP ================= */
+const map = L.map('map').setView([-26.4103,152.9258],18);
 
-/* MAP */
-const map = L.map('map', {
-  zoomControl: true
-}).setView([-26.4103,152.9258],18);
-
-/* FORCE MAP RENDER FIX (IMPORTANT) */
+/* FIX MAP RENDER BUG */
 setTimeout(()=>map.invalidateSize(),500);
 
 /* BASE MAPS */
 const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{x}/{y}');
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
 
 street.addTo(map);
 
@@ -129,7 +128,7 @@ L.control.layers({
   "Satellite": satellite
 }).addTo(map);
 
-/* ================= YOUR EXACT FIELD (UNCHANGED) ================= */
+/* ================= YOUR EXACT FIELD ================= */
 const battlefieldCoords = [
   [-26.410576, 152.925350],
   [-26.410366, 152.926038],
@@ -149,24 +148,14 @@ const battlefieldCoords = [
   [-26.410572, 152.925348]
 ];
 
-/* FIELD DRAW */
-const battlefield = L.polygon(battlefieldCoords, {
+const battlefield = L.polygon(battlefieldCoords,{
   color:"#00bfff",
   weight:3,
   fillColor:"#00bfff",
   fillOpacity:0.12
 }).addTo(map);
 
-/* FORCE FIELD ON TOP (CRITICAL FIX) */
-battlefield.bringToFront();
-
-/* OUTLINE */
-L.polyline([...battlefieldCoords, battlefieldCoords[0]], {
-  color:"#00ffff",
-  weight:1
-}).addTo(map);
-
-/* INSIDE CHECK */
+/* ================= INSIDE CHECK ================= */
 function isInside(lat,lng){
   let inside=false;
 
@@ -184,7 +173,7 @@ function isInside(lat,lng){
   return inside;
 }
 
-/* JOIN GAME */
+/* ================= JOIN ================= */
 function join(selectedTeam){
 
   playerName=document.getElementById("name").value;
@@ -195,34 +184,94 @@ function join(selectedTeam){
 
   navigator.geolocation.watchPosition(pos=>{
 
-    const lat=pos.coords.latitude;
-    const lng=pos.coords.longitude;
+   const lat = pos.coords.latitude;
+const lng = pos.coords.longitude;
 
-    db.ref("players/"+playerId).set({
-      lat,lng,team,name:playerName,lastSeen:Date.now()
-    });
+/* ================= MOVEMENT TRACKING ================= */
+
+if (pLastLat !== undefined) {
+
+  const distanceMoved = map.distance(
+    [pLastLat, pLastLng],
+    [lat, lng]
+  );
+
+  // only reset timer if real movement
+  if (distanceMoved > 5) {
+    lastMoveTime = Date.now();
+  }
+}
+
+// store last position
+pLastLat = lat;
+pLastLng = lng;
+
+// camping logic (NOT battlefield dependent)
+const camped = (Date.now() - lastMoveTime) > 60000;
+    console.log("CAMP STATUS:", camped, "LastMove:", lastMoveTime);
+  db.ref("players/"+playerId).update({
+  lat: lat,
+  lng: lng,
+  team: team,
+  name: playerName,
+  lastSeen: Date.now(),
+  lastMoveTime: lastMoveTime,
+  camped: camped
+});
 
     map.setView([lat,lng]);
 
-    if(!isInside(lat,lng)){
-      document.getElementById("warning").style.display="block";
-    } else {
-      document.getElementById("warning").style.display="none";
-    }
+    document.getElementById("warning").style.display =
+      isInside(lat,lng) ? "none" : "block";
 
   },err=>alert(err.message),{
     enableHighAccuracy:true
   });
 }
 
-/* SCOREBOARD */
+/* ================= PLAYER RENDER ENGINE (THIS WAS MISSING) ================= */
+const markers = {};
+
+function dot(color){
+  return L.divIcon({
+    className:"",
+    html:`<div style="width:12px;height:12px;border-radius:50%;background:${color};box-shadow:0 0 8px ${color};"></div>`,
+    iconSize:[12,12],
+    iconAnchor:[6,6]
+  });
+}
+
+db.ref("players").on("value",snap=>{
+
+  const data = snap.val();
+  if(!data) return;
+
+  Object.keys(data).forEach(id=>{
+
+    const p=data[id];
+    if(!p.lat||!p.lng) return;
+
+    const color = p.team==="red" ? "red" : "lime";
+
+    if(!markers[id]){
+      markers[id]=L.marker([p.lat,p.lng],{
+        icon:dot(color)
+      }).addTo(map);
+    } else {
+      markers[id]
+        .setLatLng([p.lat,p.lng])
+        .setIcon(dot(color));
+    }
+
+  });
+
+});
+
+/* ================= SCOREBOARD ================= */
 db.ref("game").on("value",snap=>{
   const g=snap.val()||{};
-
   document.getElementById("redTime").innerText=g.redTime||0;
   document.getElementById("greenTime").innerText=g.greenTime||0;
-  document.getElementById("redDeaths").innerText=g.redDeaths||0;
-  document.getElementById("greenDeaths").innerText=g.greenDeaths||0;
 });
 
 </script>
