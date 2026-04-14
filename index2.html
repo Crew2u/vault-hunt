@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Vault Hunt - FIXED BUILD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    body { margin:0; font-family:Arial; }
+    #map { height:100vh; width:100vw; }
+
+    #lobby {
+      position:fixed;
+      inset:0;
+      background:#0b0f14;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      color:white;
+      z-index:9999;
+    }
+
+    input {
+      padding:10px;
+      margin:10px;
+      width:220px;
+      text-align:center;
+    }
+
+    button {
+      padding:12px 20px;
+      margin:6px;
+      cursor:pointer;
+    }
+
+    .red { background:#ff2b2b; color:white; border:none; }
+    .green { background:#00c853; color:white; border:none; }
+
+    #hud {
+      position:absolute;
+      top:10px;
+      right:10px;
+      background:rgba(0,0,0,0.75);
+      color:white;
+      padding:10px;
+      border-radius:10px;
+      z-index:1000;
+    }
+
+    #warning {
+      position:absolute;
+      bottom:20px;
+      left:50%;
+      transform:translateX(-50%);
+      background:red;
+      color:white;
+      padding:10px 18px;
+      border-radius:8px;
+      display:none;
+      z-index:1000;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="lobby">
+  <h1 style="color:#00ff9d;">VAULT HUNT</h1>
+  <input id="name" placeholder="Enter Name">
+  <button class="red" onclick="join('red')">Join Red Team</button>
+  <button class="green" onclick="join('green')">Join Green Team</button>
+</div>
+
+<div id="hud">
+  🔴 Red: <span id="redTime">0</span><br>
+  🟢 Green: <span id="greenTime">0</span><br>
+  💀 Red Deaths: <span id="redDeaths">0</span><br>
+  💀 Green Deaths: <span id="greenDeaths">0</span>
+</div>
+
+<div id="warning">⚠ OUT OF BATTLEFIELD</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+
+/* FIREBASE */
+const firebaseConfig = {
+  apiKey: "YOUR_KEY",
+  authDomain: "vault-hunt.firebaseapp.com",
+  databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* PLAYER ID */
+let playerId = localStorage.getItem("playerId");
+if(!playerId){
+  playerId = Math.random().toString(36).substr(2,9);
+  localStorage.setItem("playerId",playerId);
+}
+
+let team=null;
+let playerName="";
+
+/* MAP */
+const map = L.map('map', {
+  zoomControl: true
+}).setView([-26.4103,152.9258],18);
+
+/* FORCE MAP RENDER FIX (IMPORTANT) */
+setTimeout(()=>map.invalidateSize(),500);
+
+/* BASE MAPS */
+const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{x}/{y}');
+
+street.addTo(map);
+
+L.control.layers({
+  "Street": street,
+  "Satellite": satellite
+}).addTo(map);
+
+/* ================= YOUR EXACT FIELD (UNCHANGED) ================= */
+const battlefieldCoords = [
+  [-26.410576, 152.925350],
+  [-26.410366, 152.926038],
+  [-26.410319, 152.926016],
+  [-26.410285, 152.926102],
+  [-26.410297, 152.926128],
+  [-26.410200, 152.926429],
+  [-26.410081, 152.926291],
+  [-26.410020, 152.926272],
+  [-26.409833, 152.926069],
+  [-26.409810, 152.926023],
+  [-26.409807, 152.925945],
+  [-26.409696, 152.925928],
+  [-26.409707, 152.925760],
+  [-26.409786, 152.925749],
+  [-26.409809, 152.925480],
+  [-26.410572, 152.925348]
+];
+
+/* FIELD DRAW */
+const battlefield = L.polygon(battlefieldCoords, {
+  color:"#00bfff",
+  weight:3,
+  fillColor:"#00bfff",
+  fillOpacity:0.12
+}).addTo(map);
+
+/* FORCE FIELD ON TOP (CRITICAL FIX) */
+battlefield.bringToFront();
+
+/* OUTLINE */
+L.polyline([...battlefieldCoords, battlefieldCoords[0]], {
+  color:"#00ffff",
+  weight:1
+}).addTo(map);
+
+/* INSIDE CHECK */
+function isInside(lat,lng){
+  let inside=false;
+
+  for(let i=0,j=battlefieldCoords.length-1;i<battlefieldCoords.length;j=i++){
+    const xi=battlefieldCoords[i][0], yi=battlefieldCoords[i][1];
+    const xj=battlefieldCoords[j][0], yj=battlefieldCoords[j][1];
+
+    const intersect =
+      ((yi>lng)!=(yj>lng)) &&
+      (lat < (xj-xi)*(lng-yi)/(yj-yi)+xi);
+
+    if(intersect) inside=!inside;
+  }
+
+  return inside;
+}
+
+/* JOIN GAME */
+function join(selectedTeam){
+
+  playerName=document.getElementById("name").value;
+  if(!playerName){alert("Enter name");return;}
+
+  team=selectedTeam;
+  document.getElementById("lobby").style.display="none";
+
+  navigator.geolocation.watchPosition(pos=>{
+
+    const lat=pos.coords.latitude;
+    const lng=pos.coords.longitude;
+
+    db.ref("players/"+playerId).set({
+      lat,lng,team,name:playerName,lastSeen:Date.now()
+    });
+
+    map.setView([lat,lng]);
+
+    if(!isInside(lat,lng)){
+      document.getElementById("warning").style.display="block";
+    } else {
+      document.getElementById("warning").style.display="none";
+    }
+
+  },err=>alert(err.message),{
+    enableHighAccuracy:true
+  });
+}
+
+/* SCOREBOARD */
+db.ref("game").on("value",snap=>{
+  const g=snap.val()||{};
+
+  document.getElementById("redTime").innerText=g.redTime||0;
+  document.getElementById("greenTime").innerText=g.greenTime||0;
+  document.getElementById("redDeaths").innerText=g.redDeaths||0;
+  document.getElementById("greenDeaths").innerText=g.greenDeaths||0;
+});
+
+</script>
+
+</body>
+</html>
