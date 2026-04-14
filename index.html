@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt - FULL FIX</title>
+  <title>Vault Hunt - SPOTTED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -61,12 +61,17 @@
       display:none;
       z-index:1000;
     }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.6); opacity: 0.4; }
+      100% { transform: scale(1); opacity: 1; }
+    }
   </style>
 </head>
 
 <body>
 
-<!-- LOBBY -->
 <div id="lobby">
   <h2 style="color:#00ff9d;">VAULT HUNT</h2>
   <input id="name" placeholder="Enter Name">
@@ -74,7 +79,6 @@
   <button class="green" onclick="join('green')">Join Green</button>
 </div>
 
-<!-- HUD -->
 <div id="hud">
   🔴 Red: <span id="redTime">0</span><br>
   🟢 Green: <span id="greenTime">0</span>
@@ -108,27 +112,21 @@ if(!playerId){
 
 let team = null;
 let playerName = "";
+
+/* ================= MOVEMENT TRACKING ================= */
 let pLastLat;
 let pLastLng;
 let lastMoveTime = Date.now();
+
 /* ================= MAP ================= */
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
-/* FIX MAP RENDER BUG */
 setTimeout(()=>map.invalidateSize(),500);
 
-/* BASE MAPS */
 const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
-
 street.addTo(map);
 
-L.control.layers({
-  "Street": street,
-  "Satellite": satellite
-}).addTo(map);
-
-/* ================= YOUR EXACT FIELD ================= */
+/* ================= FIELD ================= */
 const battlefieldCoords = [
   [-26.410576, 152.925350],
   [-26.410366, 152.926038],
@@ -148,29 +146,26 @@ const battlefieldCoords = [
   [-26.410572, 152.925348]
 ];
 
-const battlefield = L.polygon(battlefieldCoords,{
+L.polygon(battlefieldCoords,{
   color:"#00bfff",
-  weight:3,
-  fillColor:"#00bfff",
   fillOpacity:0.12
 }).addTo(map);
 
-/* ================= INSIDE CHECK ================= */
-function isInside(lat,lng){
-  let inside=false;
+/* ================= CAMPING LOGIC ================= */
+function updateMovement(lat,lng){
 
-  for(let i=0,j=battlefieldCoords.length-1;i<battlefieldCoords.length;j=i++){
-    const xi=battlefieldCoords[i][0], yi=battlefieldCoords[i][1];
-    const xj=battlefieldCoords[j][0], yj=battlefieldCoords[j][1];
+  if(pLastLat !== undefined){
+    const d = map.distance([pLastLat,pLastLng],[lat,lng]);
 
-    const intersect =
-      ((yi>lng)!=(yj>lng)) &&
-      (lat < (xj-xi)*(lng-yi)/(yj-yi)+xi);
-
-    if(intersect) inside=!inside;
+    if(d > 5){
+      lastMoveTime = Date.now();
+    }
   }
 
-  return inside;
+  pLastLat = lat;
+  pLastLng = lng;
+
+  return (Date.now() - lastMoveTime) > 60000;
 }
 
 /* ================= JOIN ================= */
@@ -184,58 +179,58 @@ function join(selectedTeam){
 
   navigator.geolocation.watchPosition(pos=>{
 
-   const lat = pos.coords.latitude;
-const lng = pos.coords.longitude;
+    const lat=pos.coords.latitude;
+    const lng=pos.coords.longitude;
 
-/* ================= MOVEMENT TRACKING ================= */
+    const camped = updateMovement(lat,lng);
 
-if (pLastLat !== undefined) {
-
-  const distanceMoved = map.distance(
-    [pLastLat, pLastLng],
-    [lat, lng]
-  );
-
-  // only reset timer if real movement
-  if (distanceMoved > 5) {
-    lastMoveTime = Date.now();
-  }
-}
-
-// store last position
-pLastLat = lat;
-pLastLng = lng;
-
-// camping logic (NOT battlefield dependent)
-const camped = (Date.now() - lastMoveTime) > 60000;
-    console.log("CAMP STATUS:", camped, "LastMove:", lastMoveTime);
-  db.ref("players/"+playerId).update({
-  lat: lat,
-  lng: lng,
-  team: team,
-  name: playerName,
-  lastSeen: Date.now(),
-  lastMoveTime: lastMoveTime,
-  camped: camped
-});
-
-    map.setView([lat,lng]);
+    db.ref("players/"+playerId).update({
+      lat,
+      lng,
+      team,
+      name:playerName,
+      lastSeen:Date.now(),
+      camped
+    });
 
     document.getElementById("warning").style.display =
       isInside(lat,lng) ? "none" : "block";
 
-  },err=>alert(err.message),{
-    enableHighAccuracy:true
-  });
+  },err=>alert(err.message),{enableHighAccuracy:true});
 }
 
-/* ================= PLAYER RENDER ENGINE (THIS WAS MISSING) ================= */
-const markers = {};
+/* ================= INSIDE CHECK ================= */
+function isInside(lat,lng){
+  let inside=false;
+  for(let i=0,j=battlefieldCoords.length-1;i<battlefieldCoords.length;j=i++){
+    const xi=battlefieldCoords[i][0], yi=battlefieldCoords[i][1];
+    const xj=battlefieldCoords[j][0], yj=battlefieldCoords[j][1];
 
-function dot(color){
+    const intersect =
+      ((yi>lng)!=(yj>lng)) &&
+      (lat < (xj-xi)*(lng-yi)/(yj-yi)+xi);
+
+    if(intersect) inside=!inside;
+  }
+  return inside;
+}
+
+/* ================= RENDER SYSTEM ================= */
+const markers={};
+
+function icon(color,spotted){
   return L.divIcon({
     className:"",
-    html:`<div style="width:12px;height:12px;border-radius:50%;background:${color};box-shadow:0 0 8px ${color};"></div>`,
+    html:`
+      <div style="
+        width:12px;
+        height:12px;
+        border-radius:50%;
+        background:${color};
+        box-shadow:0 0 8px ${color};
+        animation:${spotted ? "pulse 1s infinite" : "none"};
+      "></div>
+    `,
     iconSize:[12,12],
     iconAnchor:[6,6]
   });
@@ -243,7 +238,7 @@ function dot(color){
 
 db.ref("players").on("value",snap=>{
 
-  const data = snap.val();
+  const data=snap.val();
   if(!data) return;
 
   Object.keys(data).forEach(id=>{
@@ -251,27 +246,36 @@ db.ref("players").on("value",snap=>{
     const p=data[id];
     if(!p.lat||!p.lng) return;
 
+    const isEnemy = p.team !== team;
+
+    let visible = true;
+
+    if(isEnemy && !p.camped){
+      visible = false;
+    }
+
+    if(!visible){
+      if(markers[id]){
+        map.removeLayer(markers[id]);
+        delete markers[id];
+      }
+      return;
+    }
+
     const color = p.team==="red" ? "red" : "lime";
+    const spotted = isEnemy && p.camped;
+
+    const markerIcon = icon(color,spotted);
 
     if(!markers[id]){
-      markers[id]=L.marker([p.lat,p.lng],{
-        icon:dot(color)
-      }).addTo(map);
+      markers[id]=L.marker([p.lat,p.lng],{icon:markerIcon}).addTo(map);
     } else {
-      markers[id]
-        .setLatLng([p.lat,p.lng])
-        .setIcon(dot(color));
+      markers[id].setLatLng([p.lat,p.lng]);
+      markers[id].setIcon(markerIcon);
     }
 
   });
 
-});
-
-/* ================= SCOREBOARD ================= */
-db.ref("game").on("value",snap=>{
-  const g=snap.val()||{};
-  document.getElementById("redTime").innerText=g.redTime||0;
-  document.getElementById("greenTime").innerText=g.greenTime||0;
 });
 
 </script>
