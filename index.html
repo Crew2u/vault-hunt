@@ -184,23 +184,21 @@ function join(selectedTeam){
 
   navigator.geolocation.watchPosition(pos=>{
 
-    const lat=pos.coords.latitude;
-    const lng=pos.coords.longitude;
-// 🧠 MOVEMENT DETECTION
-let moved = true;
+   const lat = pos.coords.latitude;
+const lng = pos.coords.longitude;
+
+/* ================= MOVEMENT TRACKING ================= */
 
 if (pLastLat !== undefined) {
 
-  const d = map.distance(
+  const distanceMoved = map.distance(
     [pLastLat, pLastLng],
     [lat, lng]
   );
 
-  if (d > 5) {
-    moved = true;
+  // only reset timer if real movement
+  if (distanceMoved > 5) {
     lastMoveTime = Date.now();
-  } else {
-    moved = false;
   }
 }
 
@@ -208,7 +206,7 @@ if (pLastLat !== undefined) {
 pLastLat = lat;
 pLastLng = lng;
 
-// ⏱️ CAMP CHECK (60 seconds)
+// camping logic (NOT battlefield dependent)
 const camped = (Date.now() - lastMoveTime) > 60000;
     console.log("CAMP STATUS:", camped, "LastMove:", lastMoveTime);
   db.ref("players/"+playerId).update({
