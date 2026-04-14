@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt - Stable Build</title>
+  <title>Vault Hunt - FIXED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
     body { margin:0; font-family:Arial; }
-    #map { height:100vh; }
+    #map { height:100vh; width:100vw; }
 
-    /* LOBBY */
     #lobby {
       position:fixed;
       inset:0;
@@ -23,31 +22,22 @@
       z-index:9999;
     }
 
-    #lobby h1 {
-      color:#00ff9d;
-      letter-spacing:2px;
-      margin-bottom:10px;
-    }
-
     input {
       padding:10px;
       margin:10px;
       width:220px;
       text-align:center;
-      font-size:16px;
     }
 
     button {
       padding:12px 20px;
       margin:6px;
-      font-size:15px;
       cursor:pointer;
     }
 
     .red { background:#ff2b2b; color:white; border:none; }
     .green { background:#00c853; color:white; border:none; }
 
-    /* HUD */
     #hud {
       position:absolute;
       top:10px;
@@ -57,11 +47,8 @@
       padding:10px;
       border-radius:10px;
       z-index:1000;
-      min-width:180px;
-      font-size:14px;
     }
 
-    /* WARNING */
     #warning {
       position:absolute;
       bottom:20px;
@@ -79,23 +66,22 @@
 
 <body>
 
-<!-- 🎮 LOBBY -->
 <div id="lobby">
-  <h1>VAULT HUNT</h1>
+  <h1 style="color:#00ff9d;">VAULT HUNT</h1>
   <input id="name" placeholder="Enter Name">
   <button class="red" onclick="join('red')">Join Red Team</button>
   <button class="green" onclick="join('green')">Join Green Team</button>
 </div>
 
-<!-- 📊 HUD -->
 <div id="hud">
-  🔴 Red Time: <span id="redTime">0</span>s<br>
-  🟢 Green Time: <span id="greenTime">0</span>s<br>
+  🔴 Red: <span id="redTime">0</span><br>
+  🟢 Green: <span id="greenTime">0</span><br>
   💀 Red Deaths: <span id="redDeaths">0</span><br>
   💀 Green Deaths: <span id="greenDeaths">0</span>
 </div>
 
 <div id="warning">⚠ OUT OF BATTLEFIELD</div>
+
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -104,7 +90,7 @@
 
 <script>
 
-/* ================= FIREBASE ================= */
+/* FIREBASE */
 const firebaseConfig = {
   apiKey: "YOUR_KEY",
   authDomain: "vault-hunt.firebaseapp.com",
@@ -114,22 +100,27 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* ================= PLAYER ID ================= */
+/* PLAYER ID */
 let playerId = localStorage.getItem("playerId");
 if(!playerId){
   playerId = Math.random().toString(36).substr(2,9);
   localStorage.setItem("playerId",playerId);
 }
 
-let team = null;
-let playerName = "";
+let team=null;
+let playerName="";
 
-/* ================= MAP ================= */
-const map = L.map('map').setView([-26.4103,152.9258],18);
+/* MAP */
+const map = L.map('map', {
+  zoomControl: true
+}).setView([-26.4103,152.9258],18);
+
+/* FORCE MAP RENDER FIX (IMPORTANT) */
+setTimeout(()=>map.invalidateSize(),500);
 
 /* BASE MAPS */
 const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{x}/{y}');
 
 street.addTo(map);
 
@@ -138,7 +129,7 @@ L.control.layers({
   "Satellite": satellite
 }).addTo(map);
 
-/* ================= YOUR ORIGINAL BATTLEFIELD ================= */
+/* ================= YOUR EXACT FIELD (UNCHANGED) ================= */
 const battlefieldCoords = [
   [-26.410576, 152.925350],
   [-26.410366, 152.926038],
@@ -158,7 +149,7 @@ const battlefieldCoords = [
   [-26.410572, 152.925348]
 ];
 
-/* FIELD RENDER */
+/* FIELD DRAW */
 const battlefield = L.polygon(battlefieldCoords, {
   color:"#00bfff",
   weight:3,
@@ -166,15 +157,19 @@ const battlefield = L.polygon(battlefieldCoords, {
   fillOpacity:0.12
 }).addTo(map);
 
+/* FORCE FIELD ON TOP (CRITICAL FIX) */
+battlefield.bringToFront();
+
 /* OUTLINE */
 L.polyline([...battlefieldCoords, battlefieldCoords[0]], {
   color:"#00ffff",
   weight:1
 }).addTo(map);
 
-/* ================= INSIDE CHECK ================= */
+/* INSIDE CHECK */
 function isInside(lat,lng){
   let inside=false;
+
   for(let i=0,j=battlefieldCoords.length-1;i<battlefieldCoords.length;j=i++){
     const xi=battlefieldCoords[i][0], yi=battlefieldCoords[i][1];
     const xj=battlefieldCoords[j][0], yj=battlefieldCoords[j][1];
@@ -185,22 +180,11 @@ function isInside(lat,lng){
 
     if(intersect) inside=!inside;
   }
+
   return inside;
 }
 
-/* ================= DISTANCE ================= */
-function dist(a,b){
-  const R=6371000;
-  const dLat=(b.lat-a.lat)*Math.PI/180;
-  const dLng=(b.lng-a.lng)*Math.PI/180;
-
-  const x=Math.sin(dLat/2)**2+
-    Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
-
-  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
-}
-
-/* ================= JOIN GAME ================= */
+/* JOIN GAME */
 function join(selectedTeam){
 
   playerName=document.getElementById("name").value;
@@ -215,10 +199,7 @@ function join(selectedTeam){
     const lng=pos.coords.longitude;
 
     db.ref("players/"+playerId).set({
-      lat,lng,
-      team,
-      name:playerName,
-      lastSeen:Date.now()
+      lat,lng,team,name:playerName,lastSeen:Date.now()
     });
 
     map.setView([lat,lng]);
@@ -234,7 +215,7 @@ function join(selectedTeam){
   });
 }
 
-/* ================= SCOREBOARD ================= */
+/* SCOREBOARD */
 db.ref("game").on("value",snap=>{
   const g=snap.val()||{};
 
