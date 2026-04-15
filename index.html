@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt - SPOTTED BUILD</title>
+  <title>Battlefield Builder - STABLE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -22,69 +22,56 @@
       z-index:9999;
     }
 
-    input {
-      padding:10px;
-      margin:10px;
-      width:220px;
-      text-align:center;
-    }
-
-    button {
-      padding:12px 20px;
-      margin:6px;
-      cursor:pointer;
-    }
-
-    .red { background:#ff2b2b; color:white; border:none; }
-    .green { background:#00c853; color:white; border:none; }
-
-    #hud {
+    #adminPanel {
       position:absolute;
-      top:10px;
+      bottom:10px;
       right:10px;
-      background:rgba(0,0,0,0.75);
+      background:black;
       color:white;
       padding:10px;
       border-radius:10px;
-      z-index:1000;
-    }
-
-    #warning {
-      position:absolute;
-      bottom:20px;
-      left:50%;
-      transform:translateX(-50%);
-      background:red;
-      color:white;
-      padding:10px 18px;
-      border-radius:8px;
+      z-index:2000;
       display:none;
-      z-index:1000;
     }
 
-    @keyframes pulse {
-      0% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.6); opacity: 0.4; }
-      100% { transform: scale(1); opacity: 1; }
+    button {
+      margin:5px;
+      padding:8px;
+      cursor:pointer;
     }
+
+    .modeBtn { width:100%; }
   </style>
 </head>
 
 <body>
 
 <div id="lobby">
-  <h2 style="color:#00ff9d;">VAULT HUNT</h2>
-  <input id="name" placeholder="Enter Name">
-  <button class="red" onclick="join('red')">Join Red</button>
-  <button class="green" onclick="join('green')">Join Green</button>
+  <h2>ENTER GAME</h2>
+  <input id="name" placeholder="Name">
+  <input id="adminCode" placeholder="Admin Code">
+  <button onclick="enter()">ENTER</button>
 </div>
 
-<div id="hud">
-  🔴 Red: <span id="redTime">0</span><br>
-  🟢 Green: <span id="greenTime">0</span>
+<div id="adminPanel">
+  <b>BUILD MODE</b><br>
+
+  <button class="modeBtn" onclick="setMode('wall')">🧱 Wall</button>
+  <button class="modeBtn" onclick="setMode('drum')">🛢 Drum</button>
+  <button class="modeBtn" onclick="setMode('bridge')">🌉 Bridge</button>
+  <button class="modeBtn" onclick="setMode('fence')">🚧 Fence</button>
+  <button class="modeBtn" onclick="setMode('water')">🌊 Water</button>
+
+  <hr>
+
+  <button onclick="startDraw()">▶ Start</button>
+  <button onclick="endDraw()">⏹ End</button>
+
+  <hr>
+
+  <button onclick="exitAdmin()">❌ Exit</button>
 </div>
 
-<div id="warning">⚠ OUT OF BATTLEFIELD</div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -103,178 +90,193 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* ================= PLAYER ================= */
-let playerId = localStorage.getItem("playerId");
-if(!playerId){
-  playerId = Math.random().toString(36).substr(2,9);
-  localStorage.setItem("playerId",playerId);
+/* ================= MAP ================= */
+const map = L.map('map', {
+  center: [-26.4103,152.9258],
+  zoom: 18,
+  zoomControl: true
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+/* FIX MOBILE RENDER */
+setTimeout(() => map.invalidateSize(), 500);
+
+/* ================= PLAYER DOT (FIXED) ================= */
+let playerMarker = null;
+
+/* ================= ADMIN STATE ================= */
+let isAdmin = false;
+let mode = null;
+let drawing = false;
+let points = [];
+let lastPoint = null;
+const MIN_DISTANCE = 3;
+
+/* ================= LOGIN ================= */
+function enter(){
+  const code = document.getElementById("adminCode").value;
+
+  if(code === "1234"){
+    isAdmin = true;
+    document.getElementById("adminPanel").style.display = "block";
+  }
+
+  document.getElementById("lobby").style.display = "none";
 }
 
-let team = null;
-let playerName = "";
+/* ================= MODE ================= */
+function setMode(m){
+  mode = m;
+  alert("Mode: " + m);
+}
 
-/* ================= MOVEMENT TRACKING ================= */
-let pLastLat;
-let pLastLng;
-let lastMoveTime = Date.now();
+/* ================= DRAW START ================= */
+function startDraw(){
+  if(!mode){ alert("Select mode"); return; }
+  drawing = true;
+  points = [];
+  lastPoint = null;
+}
 
-/* ================= MAP ================= */
-const map = L.map('map').setView([-26.4103,152.9258],18);
+/* ================= DRAW END ================= */
+function endDraw(){
+  drawing = false;
 
-setTimeout(()=>map.invalidateSize(),500);
+  if(points.length < 2) return;
 
-const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-street.addTo(map);
+  const data = {
+    type: mode,
+    points: points
+  };
 
-/* ================= FIELD ================= */
-const battlefieldCoords = [
-  [-26.410576, 152.925350],
-  [-26.410366, 152.926038],
-  [-26.410319, 152.926016],
-  [-26.410285, 152.926102],
-  [-26.410297, 152.926128],
-  [-26.410200, 152.926429],
-  [-26.410081, 152.926291],
-  [-26.410020, 152.926272],
-  [-26.409833, 152.926069],
-  [-26.409810, 152.926023],
-  [-26.409807, 152.925945],
-  [-26.409696, 152.925928],
-  [-26.409707, 152.925760],
-  [-26.409786, 152.925749],
-  [-26.409809, 152.925480],
-  [-26.410572, 152.925348]
-];
+  if(mode === "fence"){
+    points.push(points[0]);
+    db.ref("perimeter").set(data);
+  } else {
+    db.ref("objects").push(data);
+  }
 
-L.polygon(battlefieldCoords,{
-  color:"#00bfff",
-  fillOpacity:0.12
-}).addTo(map);
+  points = [];
+}
 
-/* ================= CAMPING LOGIC ================= */
-function updateMovement(lat,lng){
+/* ================= EXIT ================= */
+function exitAdmin(){
+  document.getElementById("adminPanel").style.display = "none";
+  isAdmin = false;
+}
 
-  if(pLastLat !== undefined){
-    const d = map.distance([pLastLat,pLastLng],[lat,lng]);
+/* ================= DISTANCE ================= */
+function getDistance(lat1, lon1, lat2, lon2){
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
 
-    if(d > 5){
-      lastMoveTime = Date.now();
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon/2)**2;
+
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+/* ================= GPS (FIXED DOT LOGIC) ================= */
+navigator.geolocation.watchPosition(pos=>{
+
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+
+  console.log("GPS:", lat, lng);
+
+  /* CREATE DOT ONLY WHEN GPS EXISTS */
+  if(!playerMarker){
+    playerMarker = L.circleMarker([lat,lng],{
+      radius:10,
+      color:"yellow",
+      fillColor:"yellow",
+      fillOpacity:1
+    }).addTo(map);
+
+    map.setView([lat,lng],18);
+  } else {
+    playerMarker.setLatLng([lat,lng]);
+  }
+
+  /* DRAW MODE */
+  if(drawing){
+
+    if(!lastPoint){
+      points.push([lat,lng]);
+      lastPoint = {lat,lng};
+    } else {
+
+      const dist = getDistance(
+        lastPoint.lat,
+        lastPoint.lng,
+        lat,
+        lng
+      );
+
+      if(dist >= MIN_DISTANCE){
+        points.push([lat,lng]);
+        lastPoint = {lat,lng};
+      }
     }
   }
 
-  pLastLat = lat;
-  pLastLng = lng;
+}, err=>{
+  alert("GPS ERROR: " + err.message);
+}, {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 10000
+});
 
-  return (Date.now() - lastMoveTime) > 60000;
-}
+/* ================= RENDER OBJECTS ================= */
+let layers = [];
 
-/* ================= JOIN ================= */
-function join(selectedTeam){
+db.ref("objects").on("value",snap=>{
 
-  playerName=document.getElementById("name").value;
-  if(!playerName){alert("Enter name");return;}
+  layers.forEach(l=>map.removeLayer(l));
+  layers = [];
 
-  team=selectedTeam;
-  document.getElementById("lobby").style.display="none";
-
-  navigator.geolocation.watchPosition(pos=>{
-
-    const lat=pos.coords.latitude;
-    const lng=pos.coords.longitude;
-
-    const camped = updateMovement(lat,lng);
-
-    db.ref("players/"+playerId).update({
-      lat,
-      lng,
-      team,
-      name:playerName,
-      lastSeen:Date.now(),
-      camped
-    });
-
-    document.getElementById("warning").style.display =
-      isInside(lat,lng) ? "none" : "block";
-
-  },err=>alert(err.message),{enableHighAccuracy:true});
-}
-
-/* ================= INSIDE CHECK ================= */
-function isInside(lat,lng){
-  let inside=false;
-  for(let i=0,j=battlefieldCoords.length-1;i<battlefieldCoords.length;j=i++){
-    const xi=battlefieldCoords[i][0], yi=battlefieldCoords[i][1];
-    const xj=battlefieldCoords[j][0], yj=battlefieldCoords[j][1];
-
-    const intersect =
-      ((yi>lng)!=(yj>lng)) &&
-      (lat < (xj-xi)*(lng-yi)/(yj-yi)+xi);
-
-    if(intersect) inside=!inside;
-  }
-  return inside;
-}
-
-/* ================= RENDER SYSTEM ================= */
-const markers={};
-
-function icon(color,spotted){
-  return L.divIcon({
-    className:"",
-    html:`
-      <div style="
-        width:12px;
-        height:12px;
-        border-radius:50%;
-        background:${color};
-        box-shadow:0 0 8px ${color};
-        animation:${spotted ? "pulse 1s infinite" : "none"};
-      "></div>
-    `,
-    iconSize:[12,12],
-    iconAnchor:[6,6]
-  });
-}
-
-db.ref("players").on("value",snap=>{
-
-  const data=snap.val();
+  const data = snap.val();
   if(!data) return;
 
-  Object.keys(data).forEach(id=>{
+  Object.values(data).forEach(obj=>{
 
-    const p=data[id];
-    if(!p.lat||!p.lng) return;
+    let color = "white";
 
-    const isEnemy = p.team !== team;
+    if(obj.type==="wall") color="orange";
+    if(obj.type==="drum") color="blue";
+    if(obj.type==="bridge") color="brown";
+    if(obj.type==="water") color="cyan";
 
-    let visible = true;
-
-    if(isEnemy && !p.camped){
-      visible = false;
-    }
-
-    if(!visible){
-      if(markers[id]){
-        map.removeLayer(markers[id]);
-        delete markers[id];
-      }
-      return;
-    }
-
-    const color = p.team==="red" ? "red" : "lime";
-    const spotted = isEnemy && p.camped;
-
-    const markerIcon = icon(color,spotted);
-
-    if(!markers[id]){
-      markers[id]=L.marker([p.lat,p.lng],{icon:markerIcon}).addTo(map);
-    } else {
-      markers[id].setLatLng([p.lat,p.lng]);
-      markers[id].setIcon(markerIcon);
-    }
+    const line = L.polyline(obj.points,{color,weight:4}).addTo(map);
+    layers.push(line);
 
   });
+
+});
+
+/* ================= RENDER PERIMETER ================= */
+let perimeterLayer = null;
+
+db.ref("perimeter").on("value",snap=>{
+
+  if(perimeterLayer) map.removeLayer(perimeterLayer);
+
+  const data = snap.val();
+  if(!data) return;
+
+  perimeterLayer = L.polygon(data.points,{
+    color:"red",
+    fillColor:"red",
+    fillOpacity:0.1,
+    weight:3
+  }).addTo(map);
 
 });
 
