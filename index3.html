@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Vault Hunt - Admin Walls</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    body { margin:0; font-family:Arial; }
+    #map { height:100vh; }
+
+    #lobby {
+      position:fixed;
+      inset:0;
+      background:#0b0f14;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      color:white;
+      z-index:9999;
+    }
+
+    input, button {
+      padding:10px;
+      margin:8px;
+    }
+
+    .red { background:red; color:white; }
+    .green { background:green; color:white; }
+
+    #adminPanel {
+      position:absolute;
+      bottom:20px;
+      right:20px;
+      background:black;
+      color:white;
+      padding:10px;
+      border-radius:10px;
+      display:none;
+      z-index:2000;
+    }
+
+    button { cursor:pointer; }
+  </style>
+</head>
+
+<body>
+
+<div id="lobby">
+  <h2>VAULT HUNT</h2>
+  <input id="name" placeholder="Name">
+  <button class="red" onclick="join('red')">Red</button>
+  <button class="green" onclick="join('green')">Green</button>
+  <input id="adminCode" placeholder="Admin Code (optional)">
+  <button onclick="unlockAdmin()">Unlock Admin</button>
+</div>
+
+<div id="adminPanel">
+  <button onclick="startWall()">▶ Start Wall</button>
+  <button onclick="endWall()">⏹ End Wall</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+
+/* FIREBASE */
+const firebaseConfig = {
+  apiKey: "YOUR_KEY",
+  authDomain: "vault-hunt.firebaseapp.com",
+  databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* PLAYER */
+let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
+localStorage.setItem("playerId",playerId);
+
+let team=null;
+let playerName="";
+
+/* MAP */
+const map = L.map('map').setView([-26.4103,152.9258],18);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+/* ================= ADMIN ================= */
+let isAdmin=false;
+let drawing=false;
+let currentWall=[];
+
+function unlockAdmin(){
+  const code = document.getElementById("adminCode").value;
+  if(code === "1234"){   // 🔐 CHANGE THIS CODE
+    isAdmin=true;
+    document.getElementById("adminPanel").style.display="block";
+    alert("Admin unlocked");
+  } else {
+    alert("Wrong code");
+  }
+}
+
+function startWall(){
+  drawing=true;
+  currentWall=[];
+  alert("Drawing wall...");
+}
+
+function endWall(){
+  drawing=false;
+
+  if(currentWall.length > 1){
+    db.ref("walls").push({
+      points: currentWall
+    });
+  }
+
+  currentWall=[];
+  alert("Wall saved");
+}
+
+/* ================= GPS ================= */
+navigator.geolocation.watchPosition(pos=>{
+
+  const lat=pos.coords.latitude;
+  const lng=pos.coords.longitude;
+
+  if(drawing){
+    currentWall.push([lat,lng]);
+  }
+
+},err=>alert(err.message),{enableHighAccuracy:true});
+
+/* ================= RENDER WALLS ================= */
+let wallLayers=[];
+
+db.ref("walls").on("value",snap=>{
+
+  wallLayers.forEach(w=>map.removeLayer(w));
+  wallLayers=[];
+
+  const data=snap.val();
+  if(!data) return;
+
+  Object.values(data).forEach(w=>{
+
+    const line = L.polyline(w.points,{
+      color:"orange",
+      weight:4
+    }).addTo(map);
+
+    wallLayers.push(line);
+  });
+
+});
+
+/* ================= JOIN ================= */
+function join(selectedTeam){
+  playerName=document.getElementById("name").value;
+  if(!playerName){alert("Enter name");return;}
+
+  team=selectedTeam;
+  document.getElementById("lobby").style.display="none";
+}
+
+</script>
+
+</body>
+</html>
