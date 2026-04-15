@@ -47,6 +47,7 @@
       padding:10px;
       border-radius:10px;
       z-index:1000;
+      font-size:14px;
     }
 
     #centerText {
@@ -58,6 +59,7 @@
       font-size:32px;
       z-index:9999;
       text-align:center;
+      white-space:pre-line;
     }
   </style>
 </head>
@@ -75,6 +77,7 @@
 
   <button onclick="joinGame()">JOIN GAME</button>
   <button onclick="startGame()">START (ADMIN)</button>
+  <button onclick="endGame()">END GAME</button>
 
   <div id="waiting" style="display:none;">Waiting for game start...</div>
 </div>
@@ -99,6 +102,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+/* INIT SCORES (safe) */
+db.ref("scores").once("value").then(s=>{
+  if(!s.exists()){
+    db.ref("scores").set({red:0,green:0});
+  }
+});
+
 /* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId");
 if(!playerId){
@@ -107,13 +117,12 @@ if(!playerId){
 }
 
 let team = null;
-let playerName = "";
 let selectedTeam = null;
 
 /* ================= MAP ================= */
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
-const street = L.tileLayer(
+L.tileLayer(
   'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
   { opacity: 0.6 }
 ).addTo(map);
@@ -129,15 +138,12 @@ const battlefieldCoords = [
   [-26.410572, 152.925348]
 ];
 
-L.polygon(battlefieldCoords,{
-  color:"#00bfff",
-  fillOpacity:0.1
-}).addTo(map);
+L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.1}).addTo(map);
 
 /* ================= RESPAWNS ================= */
 const respawns = {
-  red: [-26.4105,152.9253],
-  green: [-26.4099,152.9262]
+  red: [-26.41025,152.92575],
+  green: [-26.41010,152.92600]
 };
 
 Object.values(respawns).forEach(r=>{
@@ -155,23 +161,37 @@ function joinGame(){
     return;
   }
 
-  playerName = name;
   team = selectedTeam;
 
-  db.ref("players/"+playerId).set({
-    name,
-    team,
-    lastSeen: Date.now()
+  navigator.geolocation.getCurrentPosition(pos=>{
+
+    db.ref("players/"+playerId).set({
+      name,
+      team,
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      lastSeen: Date.now(),
+      lastHit: 0,
+      camped: false
+    });
+
   });
 
-  document.getElementById("waiting").style.display = "block";
+  document.getElementById("waiting").style.display="block";
 }
 
 /* ================= ADMIN ================= */
 function startGame(){
   db.ref("game").set({
-    state: "countdown",
-    countdownStart: Date.now()
+    state:"countdown",
+    countdownStart:Date.now()
+  });
+}
+
+function endGame(){
+  db.ref("game").update({
+    state:"ended",
+    endTime:Date.now()
   });
 }
 
@@ -180,62 +200,81 @@ db.ref("game").on("value", snap=>{
   const g = snap.val();
   if(!g) return;
 
-  if(g.state === "countdown"){
+  if(g.state==="countdown"){
     const t = 20 - Math.floor((Date.now()-g.countdownStart)/1000);
     showCenter("Starting in "+t);
 
-    if(t <= 0){
+    if(t<=5 && t>0){
+      navigator.vibrate(100);
+    }
+
+    if(t<=0){
       db.ref("game").update({
         state:"live",
-        startTime: Date.now()
+        startTime:Date.now()
       });
     }
   }
 
-  if(g.state === "live"){
+  if(g.state==="live"){
     document.getElementById("lobby").style.display="none";
-    showCenter("GAME ON GO!",2000);
+    showCenter("GAME ON GO!");
+    navigator.vibrate([400,200,400,200,800]);
   }
 
-  if(g.state === "ended"){
-    showCenter("GAME OVER",5000);
+  if(g.state==="ended"){
+    showCenter("GAME OVER");
+    navigator.vibrate([600,200,600,200,1000]);
   }
 });
 
 /* ================= TIMER ================= */
 setInterval(()=>{
   db.ref("game").once("value").then(s=>{
-    const g = s.val();
-    if(!g || g.state !== "live") return;
+    const g=s.val();
+    if(!g || g.state!=="live") return;
 
     const remain = 600 - Math.floor((Date.now()-g.startTime)/1000);
-    document.getElementById("hud").innerHTML = "Time: "+remain;
 
-    if(remain <= 0){
-      db.ref("game").update({state:"ended"});
+    document.getElementById("hud").innerHTML =
+      "Time: "+remain+"s";
+
+    if(remain<=0){
+      db.ref("scores").once("value").then(sc=>{
+        const score=sc.val();
+
+        let winner="draw";
+        if(score.red>score.green) winner="RED";
+        if(score.green>score.red) winner="GREEN";
+
+        db.ref("game").update({
+          state:"ended",
+          winner
+        });
+      });
     }
   });
 },1000);
 
-/* ================= MOVEMENT ================= */
-let lastLat, lastLng, lastMove = Date.now();
+/* ================= CAMPING ================= */
+let lastLat,lastLng,lastMove=Date.now();
 
 function checkCamping(lat,lng){
   if(lastLat){
-    const d = map.distance([lastLat,lastLng],[lat,lng]);
-    if(d > 5) lastMove = Date.now();
+    const d=map.distance([lastLat,lastLng],[lat,lng]);
+    if(d>5) lastMove=Date.now();
   }
-  lastLat = lat; lastLng = lng;
-  return (Date.now()-lastMove) > 60000;
+  lastLat=lat; lastLng=lng;
+  return (Date.now()-lastMove)>60000;
 }
 
 /* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
 
-  const lat = pos.coords.latitude;
-  const lng = pos.coords.longitude;
+  const lat=pos.coords.latitude;
+  const lng=pos.coords.longitude;
 
-  const camped = checkCamping(lat,lng);
+  const camped=checkCamping(lat,lng);
 
   db.ref("players/"+playerId).update({
     lat,lng,camped,lastSeen:Date.now()
@@ -247,21 +286,21 @@ navigator.geolocation.watchPosition(pos=>{
 },{enableHighAccuracy:true});
 
 /* ================= RENDER ================= */
-const markers = {};
+const markers={};
 
-db.ref("players").on("value", snap=>{
-  const data = snap.val();
+db.ref("players").on("value",snap=>{
+  const data=snap.val();
   if(!data) return;
 
   Object.keys(data).forEach(id=>{
 
-    const p = data[id];
-    if(!p.lat) return;
+    const p=data[id];
+    if(!p.lat||!p.lng) return;
 
-    let visible = true;
+    let visible=true;
 
-    if(p.team !== team && !p.camped){
-      visible = false;
+    if(p.team!==team && !p.camped){
+      visible=false;
     }
 
     if(!visible){
@@ -272,18 +311,17 @@ db.ref("players").on("value", snap=>{
       return;
     }
 
-    const color = p.team==="red"?"red":"lime";
+    const color=p.team==="red"?"red":"lime";
 
-    const icon = L.divIcon({
+    const icon=L.divIcon({
       html:`<div style="width:10px;height:10px;background:${color};border-radius:50%"></div>`
     });
 
     if(!markers[id]){
       markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-    } else {
+    }else{
       markers[id].setLatLng([p.lat,p.lng]);
     }
-
   });
 });
 
@@ -292,26 +330,26 @@ let domCircle;
 
 setInterval(()=>{
   db.ref("game").once("value").then(s=>{
-    if(s.val().state !== "live") return;
+    if(s.val().state!=="live") return;
 
-    const point = battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
+    const point=battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
 
     db.ref("domination").set({
-      lat: point[0],
-      lng: point[1],
-      controlling: null
+      lat:point[0],
+      lng:point[1],
+      controlling:null
     });
 
   });
 },180000);
 
-db.ref("domination").on("value", snap=>{
-  const d = snap.val();
+db.ref("domination").on("value",snap=>{
+  const d=snap.val();
   if(!d) return;
 
   if(domCircle) map.removeLayer(domCircle);
 
-  domCircle = L.circle([d.lat,d.lng],{
+  domCircle=L.circle([d.lat,d.lng],{
     radius:3,
     color:"yellow"
   }).addTo(map);
@@ -319,10 +357,10 @@ db.ref("domination").on("value", snap=>{
 
 function checkDomination(lat,lng){
   db.ref("domination").once("value").then(s=>{
-    const d = s.val();
+    const d=s.val();
     if(!d) return;
 
-    if(map.distance([lat,lng],[d.lat,d.lng]) < 3){
+    if(map.distance([lat,lng],[d.lat,d.lng])<3){
       db.ref("domination").update({controlling:team});
     }
   });
@@ -330,8 +368,8 @@ function checkDomination(lat,lng){
 
 setInterval(()=>{
   db.ref("domination").once("value").then(s=>{
-    const d = s.val();
-    if(!d || !d.controlling) return;
+    const d=s.val();
+    if(!d||!d.controlling) return;
 
     db.ref("scores/"+d.controlling)
       .transaction(v=>(v||0)+1);
@@ -340,33 +378,34 @@ setInterval(()=>{
 
 /* ================= RESPAWN ================= */
 function checkRespawn(lat,lng){
-  const r = respawns[team];
+
+  const r=respawns[team];
   if(!r) return;
 
-  if(map.distance([lat,lng],r) < 3){
+  if(map.distance([lat,lng],r)<3){
 
     db.ref("players/"+playerId).once("value").then(s=>{
-      const p = s.val();
+      const p=s.val();
 
-      if(!p.lastHit || Date.now()-p.lastHit > 20000){
+      if(Date.now()-p.lastHit>20000){
 
         db.ref("players/"+playerId).update({
-          lastHit: Date.now()
+          lastHit:Date.now()
         });
 
         navigator.vibrate(200);
-
+        showCenter("RESPAWN");
       }
     });
   }
 }
 
 /* ================= UI ================= */
-function showCenter(text,dur=2000){
-  const el = document.getElementById("centerText");
-  el.innerText = text;
+function showCenter(text){
+  const el=document.getElementById("centerText");
+  el.innerText=text;
   el.style.display="block";
-  setTimeout(()=>el.style.display="none",dur);
+  setTimeout(()=>el.style.display="none",2000);
 }
 
 </script>
