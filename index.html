@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball</title>
+  <title>Domination Gelball - MASTER</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -61,13 +61,32 @@
       text-align:center;
       white-space:pre-line;
     }
+
+    #adminPanel {
+      position:fixed;
+      bottom:10px;
+      left:10px;
+      background:rgba(0,0,0,0.85);
+      color:white;
+      padding:10px;
+      border-radius:10px;
+      z-index:99999;
+      display:none;
+    }
+
+    #adminPanel button {
+      display:block;
+      width:100%;
+      margin:4px 0;
+    }
   </style>
 </head>
 
 <body>
 
 <div id="lobby">
-  <h2 style="color:#00ff9d;">DOMINATION</h2>
+  <h2 style="color:#00ff9d;">DOMINATION GELBALL</h2>
+
   <input id="name" placeholder="Callsign">
 
   <div>
@@ -76,8 +95,7 @@
   </div>
 
   <button onclick="joinGame()">JOIN GAME</button>
-  <button onclick="startGame()">START (ADMIN)</button>
-  <button onclick="endGame()">END GAME</button>
+  <button onclick="adminLogin()">ADMIN LOGIN</button>
 
   <div id="waiting" style="display:none;">Waiting for game start...</div>
 </div>
@@ -85,6 +103,16 @@
 <div id="hud">Waiting...</div>
 <div id="centerText"></div>
 <div id="map"></div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanel">
+  <h3>ADMIN</h3>
+  <button onclick="startGame()">Start Game</button>
+  <button onclick="stopGame()">Stop Game</button>
+  <button onclick="resetGame()">Reset</button>
+  <button onclick="spawnDomination()">Spawn Domination</button>
+  <div id="adminStats"></div>
+</div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -102,12 +130,25 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* INIT SCORES (safe) */
+/* INIT SCORES */
 db.ref("scores").once("value").then(s=>{
-  if(!s.exists()){
-    db.ref("scores").set({red:0,green:0});
-  }
+  if(!s.exists()) db.ref("scores").set({red:0,green:0});
 });
+
+/* ================= ADMIN ================= */
+let isAdmin = false;
+
+function adminLogin(){
+  const pass = prompt("Enter admin password");
+
+  if(pass === "vaultadmin"){
+    isAdmin = true;
+    document.getElementById("adminPanel").style.display = "block";
+    alert("ADMIN MODE ON");
+  } else {
+    alert("Wrong password");
+  }
+}
 
 /* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId");
@@ -124,7 +165,7 @@ const map = L.map('map').setView([-26.4103,152.9258],18);
 
 L.tileLayer(
   'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-  { opacity: 0.6 }
+  { opacity:0.6 }
 ).addTo(map);
 
 /* ================= FIELD ================= */
@@ -157,7 +198,7 @@ function joinGame(){
 
   const name = document.getElementById("name").value;
   if(!name || !selectedTeam){
-    alert("Enter name and team");
+    alert("Enter name + team");
     return;
   }
 
@@ -170,9 +211,9 @@ function joinGame(){
       team,
       lat: pos.coords.latitude,
       lng: pos.coords.longitude,
-      lastSeen: Date.now(),
-      lastHit: 0,
-      camped: false
+      camped:false,
+      lastHit:0,
+      lastSeen:Date.now()
     });
 
   });
@@ -180,7 +221,7 @@ function joinGame(){
   document.getElementById("waiting").style.display="block";
 }
 
-/* ================= ADMIN ================= */
+/* ================= ADMIN ACTIONS ================= */
 function startGame(){
   db.ref("game").set({
     state:"countdown",
@@ -188,25 +229,39 @@ function startGame(){
   });
 }
 
-function endGame(){
+function stopGame(){
   db.ref("game").update({
     state:"ended",
+    winner:"none",
     endTime:Date.now()
   });
+  showCenter("GAME STOPPED");
+}
+
+function resetGame(){
+  db.ref("game").set({state:"lobby"});
+  db.ref("scores").set({red:0,green:0});
+  db.ref("domination").remove();
+  showCenter("RESET DONE");
+}
+
+function spawnDomination(){
+  const p = battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
+  db.ref("domination").set({lat:p[0],lng:p[1],controlling:null});
+  showCenter("DOMINATION SPAWNED");
 }
 
 /* ================= GAME STATE ================= */
-db.ref("game").on("value", snap=>{
-  const g = snap.val();
+db.ref("game").on("value",snap=>{
+  const g=snap.val();
   if(!g) return;
 
   if(g.state==="countdown"){
-    const t = 20 - Math.floor((Date.now()-g.countdownStart)/1000);
-    showCenter("Starting in "+t);
+    const t=20-Math.floor((Date.now()-g.countdownStart)/1000);
 
-    if(t<=5 && t>0){
-      navigator.vibrate(100);
-    }
+    showCenter("STARTING IN "+t);
+
+    if(t<=5 && t>0) navigator.vibrate(100);
 
     if(t<=0){
       db.ref("game").update({
@@ -219,11 +274,11 @@ db.ref("game").on("value", snap=>{
   if(g.state==="live"){
     document.getElementById("lobby").style.display="none";
     showCenter("GAME ON GO!");
-    navigator.vibrate([400,200,400,200,800]);
+    navigator.vibrate([300,200,300,200,800]);
   }
 
   if(g.state==="ended"){
-    showCenter("GAME OVER");
+    showCenter("GAME OVER\nWINNER: "+(g.winner||"unknown"));
     navigator.vibrate([600,200,600,200,1000]);
   }
 });
@@ -234,18 +289,17 @@ setInterval(()=>{
     const g=s.val();
     if(!g || g.state!=="live") return;
 
-    const remain = 600 - Math.floor((Date.now()-g.startTime)/1000);
+    const remain=600-Math.floor((Date.now()-g.startTime)/1000);
 
-    document.getElementById("hud").innerHTML =
-      "Time: "+remain+"s";
+    document.getElementById("hud").innerHTML="Time: "+remain+"s";
 
     if(remain<=0){
       db.ref("scores").once("value").then(sc=>{
-        const score=sc.val();
+        const s=sc.val();
 
         let winner="draw";
-        if(score.red>score.green) winner="RED";
-        if(score.green>score.red) winner="GREEN";
+        if(s.red>s.green) winner="red";
+        if(s.green>s.red) winner="green";
 
         db.ref("game").update({
           state:"ended",
@@ -261,8 +315,9 @@ let lastLat,lastLng,lastMove=Date.now();
 
 function checkCamping(lat,lng){
   if(lastLat){
-    const d=map.distance([lastLat,lastLng],[lat,lng]);
-    if(d>5) lastMove=Date.now();
+    if(map.distance([lastLat,lastLng],[lat,lng])>5){
+      lastMove=Date.now();
+    }
   }
   lastLat=lat; lastLng=lng;
   return (Date.now()-lastMove)>60000;
@@ -293,7 +348,6 @@ db.ref("players").on("value",snap=>{
   if(!data) return;
 
   Object.keys(data).forEach(id=>{
-
     const p=data[id];
     if(!p.lat||!p.lng) return;
 
@@ -319,7 +373,7 @@ db.ref("players").on("value",snap=>{
 
     if(!markers[id]){
       markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-    }else{
+    } else {
       markers[id].setLatLng([p.lat,p.lng]);
     }
   });
@@ -332,11 +386,11 @@ setInterval(()=>{
   db.ref("game").once("value").then(s=>{
     if(s.val().state!=="live") return;
 
-    const point=battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
+    const p=battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
 
     db.ref("domination").set({
-      lat:point[0],
-      lng:point[1],
+      lat:p[0],
+      lng:p[1],
       controlling:null
     });
 
@@ -349,10 +403,7 @@ db.ref("domination").on("value",snap=>{
 
   if(domCircle) map.removeLayer(domCircle);
 
-  domCircle=L.circle([d.lat,d.lng],{
-    radius:3,
-    color:"yellow"
-  }).addTo(map);
+  domCircle=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
 });
 
 function checkDomination(lat,lng){
