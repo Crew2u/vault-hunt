@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Vault Hunt - Admin Walls</title>
+  <title>Battlefield Builder</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -22,44 +22,54 @@
       z-index:9999;
     }
 
-    input, button {
-      padding:10px;
-      margin:8px;
-    }
-
-    .red { background:red; color:white; }
-    .green { background:green; color:white; }
-
     #adminPanel {
       position:absolute;
-      bottom:20px;
-      right:20px;
+      bottom:10px;
+      right:10px;
       background:black;
       color:white;
       padding:10px;
       border-radius:10px;
-      display:none;
       z-index:2000;
+      display:none;
     }
 
-    button { cursor:pointer; }
+    button {
+      margin:5px;
+      padding:8px;
+      cursor:pointer;
+    }
+
+    .modeBtn { width:100%; }
   </style>
 </head>
 
 <body>
 
 <div id="lobby">
-  <h2>VAULT HUNT</h2>
+  <h2>ENTER GAME</h2>
   <input id="name" placeholder="Name">
-  <button class="red" onclick="join('red')">Red</button>
-  <button class="green" onclick="join('green')">Green</button>
-  <input id="adminCode" placeholder="Admin Code (optional)">
-  <button onclick="unlockAdmin()">Unlock Admin</button>
+  <input id="adminCode" placeholder="Admin Code">
+  <button onclick="enter()">ENTER</button>
 </div>
 
 <div id="adminPanel">
-  <button onclick="startWall()">▶ Start Wall</button>
-  <button onclick="endWall()">⏹ End Wall</button>
+  <b>BUILD MODE</b><br>
+
+  <button class="modeBtn" onclick="setMode('wall')">🧱 Wall</button>
+  <button class="modeBtn" onclick="setMode('drum')">🛢 Drum</button>
+  <button class="modeBtn" onclick="setMode('bridge')">🌉 Bridge</button>
+  <button class="modeBtn" onclick="setMode('fence')">🚧 Fence</button>
+  <button class="modeBtn" onclick="setMode('water')">🌊 Water</button>
+
+  <hr>
+
+  <button onclick="startDraw()">▶ Start</button>
+  <button onclick="endDraw()">⏹ End</button>
+
+  <hr>
+
+  <button onclick="exitAdmin()">❌ Exit</button>
 </div>
 
 <div id="map"></div>
@@ -79,95 +89,164 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER */
-let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
-localStorage.setItem("playerId",playerId);
-
-let team=null;
-let playerName="";
-
 /* MAP */
 const map = L.map('map').setView([-26.4103,152.9258],18);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-/* ================= ADMIN ================= */
-let isAdmin=false;
-let drawing=false;
-let currentWall=[];
+/* PLAYER GPS MARKER */
+let playerMarker = L.circleMarker([0,0],{
+  radius:8,
+  color:"yellow"
+}).addTo(map);
 
-function unlockAdmin(){
+/* ADMIN */
+let isAdmin=false;
+let mode=null;
+let drawing=false;
+let points=[];
+let lastPoint=null;
+const MIN_DISTANCE = 3;
+
+/* ENTER */
+function enter(){
   const code = document.getElementById("adminCode").value;
-  if(code === "1234"){   // 🔐 CHANGE THIS CODE
+
+  if(code === "1234"){
     isAdmin=true;
     document.getElementById("adminPanel").style.display="block";
-    alert("Admin unlocked");
-  } else {
-    alert("Wrong code");
   }
+
+  document.getElementById("lobby").style.display="none";
 }
 
-function startWall(){
+/* MODE SELECT */
+function setMode(m){
+  mode=m;
+  alert("Mode: " + m);
+}
+
+/* START DRAW */
+function startDraw(){
+  if(!mode){ alert("Select mode"); return; }
   drawing=true;
-  currentWall=[];
-  alert("Drawing wall...");
+  points=[];
+  lastPoint=null;
 }
 
-function endWall(){
+/* END DRAW */
+function endDraw(){
   drawing=false;
 
-  if(currentWall.length > 1){
-    db.ref("walls").push({
-      points: currentWall
-    });
+  if(points.length < 2) return;
+
+  const data = {
+    type: mode,
+    points: points
+  };
+
+  if(mode === "fence"){
+    points.push(points[0]);
+    db.ref("perimeter").set(data);
+  } else {
+    db.ref("objects").push(data);
   }
 
-  currentWall=[];
-  alert("Wall saved");
+  points=[];
 }
 
-/* ================= GPS ================= */
+/* EXIT ADMIN */
+function exitAdmin(){
+  document.getElementById("adminPanel").style.display="none";
+  isAdmin=false;
+}
+
+/* DISTANCE */
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon/2)**2;
+
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+/* GPS */
 navigator.geolocation.watchPosition(pos=>{
 
   const lat=pos.coords.latitude;
   const lng=pos.coords.longitude;
 
+  playerMarker.setLatLng([lat,lng]);
+
   if(drawing){
-    currentWall.push([lat,lng]);
+
+    if(!lastPoint){
+      points.push([lat,lng]);
+      lastPoint={lat,lng};
+    } else {
+
+      const dist=getDistance(lastPoint.lat,lastPoint.lng,lat,lng);
+
+      if(dist >= MIN_DISTANCE){
+        points.push([lat,lng]);
+        lastPoint={lat,lng};
+      }
+    }
   }
 
-},err=>alert(err.message),{enableHighAccuracy:true});
+});
 
-/* ================= RENDER WALLS ================= */
-let wallLayers=[];
+/* RENDER OBJECTS */
+let layers=[];
 
-db.ref("walls").on("value",snap=>{
+db.ref("objects").on("value",snap=>{
 
-  wallLayers.forEach(w=>map.removeLayer(w));
-  wallLayers=[];
+  layers.forEach(l=>map.removeLayer(l));
+  layers=[];
 
   const data=snap.val();
   if(!data) return;
 
-  Object.values(data).forEach(w=>{
+  Object.values(data).forEach(obj=>{
 
-    const line = L.polyline(w.points,{
-      color:"orange",
-      weight:4
-    }).addTo(map);
+    let color="white";
 
-    wallLayers.push(line);
+    if(obj.type==="wall") color="orange";
+    if(obj.type==="drum") color="blue";
+    if(obj.type==="bridge") color="brown";
+    if(obj.type==="water") color="cyan";
+
+    const line=L.polyline(obj.points,{color,weight:4}).addTo(map);
+    layers.push(line);
+
   });
 
 });
 
-/* ================= JOIN ================= */
-function join(selectedTeam){
-  playerName=document.getElementById("name").value;
-  if(!playerName){alert("Enter name");return;}
+/* RENDER PERIMETER */
+let perimeterLayer=null;
 
-  team=selectedTeam;
-  document.getElementById("lobby").style.display="none";
-}
+db.ref("perimeter").on("value",snap=>{
+
+  if(perimeterLayer) map.removeLayer(perimeterLayer);
+
+  const data=snap.val();
+  if(!data) return;
+
+  perimeterLayer = L.polygon(data.points,{
+    color:"red",
+    fillColor:"red",
+    fillOpacity:0.1,
+    weight:3
+  }).addTo(map);
+
+});
 
 </script>
 
