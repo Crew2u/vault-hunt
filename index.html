@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - MASTER</title>
+  <title>Domination Gelball - MASTER CONTROL BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -72,10 +72,10 @@
       border-radius:10px;
       z-index:99999;
       display:none;
+      width:180px;
     }
 
     #adminPanel button {
-      display:block;
       width:100%;
       margin:4px 0;
     }
@@ -104,13 +104,18 @@
 <div id="centerText"></div>
 <div id="map"></div>
 
-<!-- ADMIN PANEL -->
+<!-- ADMIN PANEL ALWAYS AVAILABLE -->
 <div id="adminPanel">
-  <h3>ADMIN</h3>
-  <button onclick="startGame()">Start Game</button>
-  <button onclick="stopGame()">Stop Game</button>
+  <b>ADMIN</b>
+
+  <button onclick="startGame()">Start</button>
+  <button onclick="pauseGame()">Pause</button>
+  <button onclick="resumeGame()">Resume</button>
+  <button onclick="stopGame()">Stop</button>
   <button onclick="resetGame()">Reset</button>
-  <button onclick="spawnDomination()">Spawn Domination</button>
+  <button onclick="spawnDomination()">Spawn</button>
+  <button style="background:red;color:white;" onclick="emergencyStop()">EMERGENCY</button>
+
   <div id="adminStats"></div>
 </div>
 
@@ -130,7 +135,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* INIT SCORES */
+/* init scores */
 db.ref("scores").once("value").then(s=>{
   if(!s.exists()) db.ref("scores").set({red:0,green:0});
 });
@@ -139,14 +144,11 @@ db.ref("scores").once("value").then(s=>{
 let isAdmin = false;
 
 function adminLogin(){
-  const pass = prompt("Enter admin password");
-
-  if(pass === "vaultadmin"){
-    isAdmin = true;
-    document.getElementById("adminPanel").style.display = "block";
-    alert("ADMIN MODE ON");
-  } else {
-    alert("Wrong password");
+  const pass = prompt("Admin password");
+  if(pass==="vaultadmin"){
+    isAdmin=true;
+    document.getElementById("adminPanel").style.display="block";
+    showCenter("ADMIN MODE ENABLED");
   }
 }
 
@@ -157,20 +159,19 @@ if(!playerId){
   localStorage.setItem("playerId",playerId);
 }
 
-let team = null;
-let selectedTeam = null;
+let team=null;
+let selectedTeam=null;
 
 /* ================= MAP ================= */
 const map = L.map('map').setView([-26.4103,152.9258],18);
 
 L.tileLayer(
   'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-  { opacity:0.6 }
+  {opacity:0.6}
 ).addTo(map);
 
-/* ================= FIELD ================= */
+/* ================= ORIGINAL FIELD (RESTORED) ================= */
 const battlefieldCoords = [
-  const battlefieldCoords = [
   [-26.410576, 152.925350],
   [-26.410366, 152.926038],
   [-26.410319, 152.926016],
@@ -192,9 +193,9 @@ const battlefieldCoords = [
 L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.1}).addTo(map);
 
 /* ================= RESPAWNS ================= */
-const respawns = {
-  red: [-26.41025,152.92575],
-  green: [-26.41010,152.92600]
+const respawns={
+  red:[-26.41025,152.92575],
+  green:[-26.41010,152.92600]
 };
 
 Object.values(respawns).forEach(r=>{
@@ -202,94 +203,84 @@ Object.values(respawns).forEach(r=>{
 });
 
 /* ================= LOBBY ================= */
-function selectTeam(t){ selectedTeam = t; }
+function selectTeam(t){selectedTeam=t;}
 
 function joinGame(){
+  const name=document.getElementById("name").value;
+  if(!name||!selectedTeam){alert("Missing");return;}
 
-  const name = document.getElementById("name").value;
-  if(!name || !selectedTeam){
-    alert("Enter name + team");
-    return;
-  }
-
-  team = selectedTeam;
+  team=selectedTeam;
 
   navigator.geolocation.getCurrentPosition(pos=>{
-
     db.ref("players/"+playerId).set({
       name,
       team,
-      lat: pos.coords.latitude,
-      lng: pos.coords.longitude,
+      lat:pos.coords.latitude,
+      lng:pos.coords.longitude,
       camped:false,
       lastHit:0,
       lastSeen:Date.now()
     });
-
   });
 
   document.getElementById("waiting").style.display="block";
 }
 
-/* ================= ADMIN ACTIONS ================= */
+/* ================= GAME CONTROL ================= */
 function startGame(){
-  db.ref("game").set({
-    state:"countdown",
-    countdownStart:Date.now()
-  });
+  db.ref("game").set({state:"countdown",countdownStart:Date.now()});
+}
+
+function pauseGame(){
+  db.ref("game").update({state:"paused"});
+  showCenter("PAUSED");
+}
+
+function resumeGame(){
+  db.ref("game").update({state:"live"});
 }
 
 function stopGame(){
-  db.ref("game").update({
-    state:"ended",
-    winner:"none",
-    endTime:Date.now()
-  });
-  showCenter("GAME STOPPED");
+  db.ref("game").update({state:"ended",winner:"none"});
 }
 
 function resetGame(){
   db.ref("game").set({state:"lobby"});
   db.ref("scores").set({red:0,green:0});
   db.ref("domination").remove();
-  showCenter("RESET DONE");
+  showCenter("RESET");
 }
 
-function spawnDomination(){
-  const p = battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
-  db.ref("domination").set({lat:p[0],lng:p[1],controlling:null});
-  showCenter("DOMINATION SPAWNED");
+function emergencyStop(){
+  db.ref("game").update({state:"ended",winner:"none"});
+  navigator.vibrate([800,200,800]);
 }
 
 /* ================= GAME STATE ================= */
 db.ref("game").on("value",snap=>{
   const g=snap.val();
-  if(!g) return;
+  if(!g)return;
 
   if(g.state==="countdown"){
     const t=20-Math.floor((Date.now()-g.countdownStart)/1000);
-
-    showCenter("STARTING IN "+t);
-
-    if(t<=5 && t>0) navigator.vibrate(100);
+    showCenter("STARTING "+t);
 
     if(t<=0){
-      db.ref("game").update({
-        state:"live",
-        startTime:Date.now()
-      });
+      db.ref("game").update({state:"live",startTime:Date.now()});
     }
   }
 
   if(g.state==="live"){
     document.getElementById("lobby").style.display="none";
-    showCenter("GAME ON GO!");
-    navigator.vibrate([300,200,300,200,800]);
+    showCenter("GAME ON");
+  }
+
+  if(g.state==="paused"){
+    showCenter("PAUSED");
   }
 
   if(g.state==="ended"){
-    showCenter("GAME OVER\nWINNER: "+(g.winner||"unknown"));
-    navigator.vibrate([600,200,600,200,1000]);
+    showCenter("GAME OVER");
   }
 });
 
@@ -297,25 +288,15 @@ db.ref("game").on("value",snap=>{
 setInterval(()=>{
   db.ref("game").once("value").then(s=>{
     const g=s.val();
-    if(!g || g.state!=="live") return;
+    if(!g||g.state!=="live")return;
 
     const remain=600-Math.floor((Date.now()-g.startTime)/1000);
 
-    document.getElementById("hud").innerHTML="Time: "+remain+"s";
+    document.getElementById("hud").innerHTML=
+      "Time:"+remain+(isAdmin?"<br>ADMIN":"");
 
     if(remain<=0){
-      db.ref("scores").once("value").then(sc=>{
-        const s=sc.val();
-
-        let winner="draw";
-        if(s.red>s.green) winner="red";
-        if(s.green>s.red) winner="green";
-
-        db.ref("game").update({
-          state:"ended",
-          winner
-        });
-      });
+      db.ref("game").update({state:"ended"});
     }
   });
 },1000);
@@ -329,13 +310,12 @@ function checkCamping(lat,lng){
       lastMove=Date.now();
     }
   }
-  lastLat=lat; lastLng=lng;
-  return (Date.now()-lastMove)>60000;
+  lastLat=lat;lastLng=lng;
+  return(Date.now()-lastMove>60000);
 }
 
 /* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
-
   const lat=pos.coords.latitude;
   const lng=pos.coords.longitude;
 
@@ -354,73 +334,54 @@ navigator.geolocation.watchPosition(pos=>{
 const markers={};
 
 db.ref("players").on("value",snap=>{
-  const data=snap.val();
-  if(!data) return;
+  const d=snap.val();if(!d)return;
 
-  Object.keys(data).forEach(id=>{
-    const p=data[id];
-    if(!p.lat||!p.lng) return;
+  Object.keys(d).forEach(id=>{
+    const p=d[id];
+    if(!p.lat)return;
 
     let visible=true;
-
-    if(p.team!==team && !p.camped){
-      visible=false;
-    }
+    if(p.team!==team&&!p.camped)visible=false;
 
     if(!visible){
-      if(markers[id]){
-        map.removeLayer(markers[id]);
-        delete markers[id];
-      }
+      if(markers[id])map.removeLayer(markers[id]);
+      delete markers[id];
       return;
     }
 
-    const color=p.team==="red"?"red":"lime";
-
     const icon=L.divIcon({
-      html:`<div style="width:10px;height:10px;background:${color};border-radius:50%"></div>`
+      html:`<div style="width:10px;height:10px;background:${p.team==="red"?"red":"lime"};border-radius:50%"></div>`
     });
 
     if(!markers[id]){
       markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-    } else {
+    }else{
       markers[id].setLatLng([p.lat,p.lng]);
     }
   });
 });
 
 /* ================= DOMINATION ================= */
-let domCircle;
-
 setInterval(()=>{
   db.ref("game").once("value").then(s=>{
-    if(s.val().state!=="live") return;
+    if(s.val().state!=="live")return;
 
     const p=battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
 
-    db.ref("domination").set({
-      lat:p[0],
-      lng:p[1],
-      controlling:null
-    });
-
+    db.ref("domination").set({lat:p[0],lng:p[1],controlling:null});
   });
 },180000);
 
 db.ref("domination").on("value",snap=>{
   const d=snap.val();
-  if(!d) return;
-
-  if(domCircle) map.removeLayer(domCircle);
-
-  domCircle=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
+  if(!d)return;
+  L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
 });
 
 function checkDomination(lat,lng){
   db.ref("domination").once("value").then(s=>{
     const d=s.val();
-    if(!d) return;
-
+    if(!d)return;
     if(map.distance([lat,lng],[d.lat,d.lng])<3){
       db.ref("domination").update({controlling:team});
     }
@@ -430,41 +391,31 @@ function checkDomination(lat,lng){
 setInterval(()=>{
   db.ref("domination").once("value").then(s=>{
     const d=s.val();
-    if(!d||!d.controlling) return;
-
-    db.ref("scores/"+d.controlling)
-      .transaction(v=>(v||0)+1);
+    if(!d||!d.controlling)return;
+    db.ref("scores/"+d.controlling).transaction(v=>(v||0)+1);
   });
 },1000);
 
 /* ================= RESPAWN ================= */
 function checkRespawn(lat,lng){
-
   const r=respawns[team];
-  if(!r) return;
+  if(!r)return;
 
   if(map.distance([lat,lng],r)<3){
-
     db.ref("players/"+playerId).once("value").then(s=>{
       const p=s.val();
-
       if(Date.now()-p.lastHit>20000){
-
-        db.ref("players/"+playerId).update({
-          lastHit:Date.now()
-        });
-
+        db.ref("players/"+playerId).update({lastHit:Date.now()});
         navigator.vibrate(200);
-        showCenter("RESPAWN");
       }
     });
   }
 }
 
 /* ================= UI ================= */
-function showCenter(text){
+function showCenter(t){
   const el=document.getElementById("centerText");
-  el.innerText=text;
+  el.innerText=t;
   el.style.display="block";
   setTimeout(()=>el.style.display="none",2000);
 }
