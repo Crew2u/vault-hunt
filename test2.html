@@ -1,20 +1,35 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - STABLE BUILD</title>
+  <title>Domination Gelball - HUD BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; background:#0b0f14; color:white; }
-    #map { height:100vh; width:100%; }
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#000;
+      color:white;
+      overflow:hidden;
+    }
 
+    #map {
+      height:100vh;
+      width:100%;
+      filter: contrast(1.1) brightness(0.9);
+    }
+
+    /* ===== LOBBY ===== */
     #lobby {
-      position:fixed; inset:0;
-      display:flex; flex-direction:column;
-      justify-content:center; align-items:center;
-      background:radial-gradient(circle,#0b0f14,#000);
+      position:fixed;
+      inset:0;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      background:radial-gradient(circle,#111,#000);
       z-index:9999;
     }
 
@@ -25,34 +40,47 @@
       text-align:center;
       background:#111;
       color:white;
+      border:1px solid #333;
     }
 
-    .teamBtn { padding:14px 24px; margin:10px; }
+    .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
+    /* ===== ADMIN BUTTON (HIDDEN) ===== */
+    #adminBtn {
+      position:absolute;
+      bottom:10px;
+      right:10px;
+      width:40px;
+      height:40px;
+      opacity:0.05;
+      z-index:10000;
+    }
+
+    /* ===== ADMIN PANEL ===== */
+    #adminScreen {
+      position:fixed;
+      inset:0;
+      background:#000;
+      display:none;
+      z-index:10000;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+    }
+
+    #adminScreen button {
+      padding:16px 30px;
+      margin:10px;
+      font-size:18px;
+      cursor:pointer;
+    }
+
+    /* ===== WAITING SCREEN ===== */
     #waitingScreen {
       position:fixed;
       inset:0;
       display:none;
       z-index:5000;
-    }
-
-    #adminPanel {
-      position:fixed;
-      bottom:10px;
-      left:10px;
-      background:rgba(0,0,0,0.8);
-      padding:10px;
-      display:none;
-      z-index:9999;
-    }
-
-    #centerText {
-      position:fixed;
-      top:50%;
-      left:50%;
-      transform:translate(-50%,-50%);
-      font-size:28px;
-      z-index:9999;
     }
 
     #hud {
@@ -61,13 +89,26 @@
       right:10px;
       background:rgba(0,0,0,0.7);
       padding:10px;
+      border-radius:8px;
       z-index:1000;
     }
+
+    #centerText {
+      position:fixed;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      font-size:34px;
+      font-weight:bold;
+      z-index:9999;
+    }
+
   </style>
 </head>
 
 <body>
 
+<!-- ===== LOBBY ===== -->
 <div id="lobby">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
@@ -76,18 +117,26 @@
   <button class="teamBtn" onclick="selectTeam('green')">GREEN</button>
 
   <button onclick="joinGame()">JOIN GAME</button>
+
+  <!-- 🔥 Hidden Admin Button -->
+  <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
+<!-- ===== ADMIN SCREEN ===== -->
+<div id="adminScreen">
+  <h2>ADMIN CONTROL</h2>
+
+  <button onclick="startGame()">START GAME</button>
+  <button onclick="stopGame()">STOP GAME</button>
+  <button onclick="exitAdmin()">EXIT</button>
+</div>
+
+<!-- ===== GAME SCREEN ===== -->
 <div id="waitingScreen">
   <div id="map"></div>
+  <div id="hud">Waiting for game...</div>
 </div>
 
-<div id="adminPanel">
-  <button onclick="startGame()">START</button>
-  <button onclick="stopGame()">END</button>
-</div>
-
-<div id="hud">Waiting...</div>
 <div id="centerText"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -110,20 +159,46 @@ const db = firebase.database();
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
-let team=null;
+let team = null;
 
-/* ================= MAP (SAFE INIT) ================= */
+/* ================= ADMIN LOGIN ================= */
+function adminLogin(){
+  const code = prompt("Enter Admin Code");
+  if(code === "1288"){
+    document.getElementById("lobby").style.display = "none";
+    document.getElementById("adminScreen").style.display = "flex";
+  }
+}
+
+/* ================= ADMIN ACTIONS ================= */
+function startGame(){
+  db.ref("game").set({
+    state:"live",
+    startTime:Date.now()
+  });
+}
+
+function stopGame(){
+  db.ref("game").set({
+    state:"ended"
+  });
+}
+
+function exitAdmin(){
+  document.getElementById("adminScreen").style.display = "none";
+  document.getElementById("lobby").style.display = "flex";
+}
+
+/* ================= MAP ================= */
 let map;
 
 function initMap(){
   if(map) return;
 
-  map = L.map('map', {
-    zoomControl:true
-  }).setView([-26.4103,152.9258],18);
+  map = L.map('map').setView([-26.4103,152.9258],18);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    opacity:0.7
+    opacity:0.8
   }).addTo(map);
 
   L.polygon([
@@ -143,18 +218,21 @@ function initMap(){
     [-26.409786,152.925749],
     [-26.409809,152.925480],
     [-26.410572,152.925348]
-  ], {color:"#00bfff",fillOpacity:0.1}).addTo(map);
+  ], {
+    color:"#00bfff",
+    fillOpacity:0.5
+  }).addTo(map);
 
-  setTimeout(()=>map.invalidateSize(),500);
+  setTimeout(()=>map.invalidateSize(),400);
 }
 
 /* ================= TEAM ================= */
-function selectTeam(t){ team=t; }
+function selectTeam(t){ team = t; }
 
 /* ================= JOIN ================= */
 function joinGame(){
-  const name=document.getElementById("name").value;
-  if(!name||!team) return alert("Enter name + team");
+  const name = document.getElementById("name").value;
+  if(!name || !team) return alert("Enter name + team");
 
   document.getElementById("lobby").style.display="none";
   document.getElementById("waitingScreen").style.display="block";
@@ -163,8 +241,7 @@ function joinGame(){
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
-      name,
-      team,
+      name, team,
       lat:pos.coords.latitude,
       lng:pos.coords.longitude
     });
@@ -179,34 +256,25 @@ navigator.geolocation.watchPosition(pos=>{
   });
 });
 
-/* ================= SAFE RENDER ENGINE ================= */
-const markers={};
+/* ================= RENDER ================= */
+const markers = {};
 
-db.ref("players").on("value",snap=>{
-  const data=snap.val();
+db.ref("players").on("value", snap=>{
+  const data = snap.val();
   if(!data || !map) return;
 
   Object.keys(data).forEach(id=>{
-    const p=data[id];
+    const p = data[id];
+    if(!p.lat || !p.lng) return;
 
-    console.log("PLAYER:", id, p.team, p.lat, p.lng);
-
-    if (p.lat == null || p.lng == null) return;
-
-    // ✅ FIXED: single clean normalized team
-    const cleanTeam = (p.team || "").toLowerCase().trim();
-
-    const color =
-      cleanTeam === "red" ? "red" :
-      cleanTeam === "green" ? "lime" :
-      "white";
+    const color = p.team === "red" ? "red" : "lime";
 
     const icon = L.divIcon({
       html:`<div style="
-        width:12px;height:12px;
+        width:14px;height:14px;
         background:${color};
         border-radius:50%;
-        box-shadow:0 0 10px ${color};
+        box-shadow:0 0 12px ${color};
       "></div>`
     });
 
@@ -216,17 +284,19 @@ db.ref("players").on("value",snap=>{
       markers[id].setLatLng([p.lat,p.lng]);
       markers[id].setIcon(icon);
     }
-
   });
 });
 
-/* ================= ADMIN ================= */
-function startGame(){
-  db.ref("game").set({state:"live"});
-}
-function stopGame(){
-  db.ref("game").set({state:"ended"});
-}
+/* ================= HUD ================= */
+setInterval(()=>{
+  db.ref("game").once("value").then(s=>{
+    const g = s.val();
+    if(!g) return;
+
+    document.getElementById("hud").innerHTML =
+      "STATE: " + g.state;
+  });
+},1000);
 
 </script>
 
