@@ -173,7 +173,9 @@ let isAdmin=false;
 
 /* ================= MAP ================= */
 const map = L.map('map').setView([-26.4103,152.9258],18);
-
+setTimeout(() => {
+  map.invalidateSize();
+}, 800);
 L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{opacity:0.6}).addTo(map);
 
 /* ================= ORIGINAL FIELD ================= */
@@ -224,14 +226,13 @@ function joinGame(){
   });
 
   lobby.style.display="none";
-  waitingScreen.style.display="block";
+waitingScreen.style.display="block";
 
-  // 🔥 FORCE MAP FIX
-  setTimeout(()=>{
-    map.invalidateSize();
-    map.setView([ -26.4103, 152.9258 ], 18);
-  }, 500);
-}
+setTimeout(()=>{
+  map.invalidateSize();
+  map.setView([-26.4103,152.9258],18);
+  map._onResize(); // 🔥 forces internal redraw
+}, 800);
 
 /* ================= ADMIN ================= */
 function adminLogin(){
@@ -340,10 +341,10 @@ db.ref("players").on("value",snap=>{
     const icon=L.divIcon({
       html:`<div style="width:10px;height:10px;background:${p.team==="red"?"red":"lime"};border-radius:50%"></div>`
     });
-
-    if(!markers[id]){
-   markers[id]=L.marker([p.lat,p.lng],{icon});
-markers[id].addTo(map);
+map.invalidateSize();
+   if(!markers[id]){
+  markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+}
     } else {
       markers[id].setLatLng([p.lat,p.lng]);
     }
