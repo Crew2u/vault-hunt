@@ -161,6 +161,26 @@ function showScreen(id){
   document.getElementById(id).style.display="flex";
 }
 
+/* ================= BATTLEFIELD SHARED ================= */
+const battlefieldCoords = [
+  [-26.410576,152.925350],
+  [-26.410366,152.926038],
+  [-26.410319,152.926016],
+  [-26.410285,152.926102],
+  [-26.410297,152.926128],
+  [-26.410200,152.926429],
+  [-26.410081,152.926291],
+  [-26.410020,152.926272],
+  [-26.409833,152.926069],
+  [-26.409810,152.926023],
+  [-26.409807,152.925945],
+  [-26.409696,152.925928],
+  [-26.409707,152.925760],
+  [-26.409786,152.925749],
+  [-26.409809,152.925480],
+  [-26.410572,152.925348]
+];
+
 /* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
@@ -172,31 +192,12 @@ function initMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(map);
 
-  L.polygon([
-    [-26.410576,152.925350],
-    [-26.410366,152.926038],
-    [-26.410319,152.926016],
-    [-26.410285,152.926102],
-    [-26.410297,152.926128],
-    [-26.410200,152.926429],
-    [-26.410081,152.926291],
-    [-26.410020,152.926272],
-    [-26.409833,152.926069],
-    [-26.409810,152.926023],
-    [-26.409807,152.925945],
-    [-26.409696,152.925928],
-    [-26.409707,152.925760],
-    [-26.409786,152.925749],
-    [-26.409809,152.925480],
-    [-26.410572,152.925348]
-  ],{
+  L.polygon(battlefieldCoords,{
     color:"#00bfff",
     fillOpacity:0.4
   }).addTo(map);
 
-  setTimeout(()=>{
-    map.invalidateSize();
-  },300);
+  setTimeout(()=>map.invalidateSize(),300);
 }
 
 /* ================= ADMIN MAP ================= */
@@ -210,11 +211,15 @@ function initAdminMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
 
-  // 🔥 CRITICAL FIX FOR BLANK MAP
+  /* 🔥 FIX: ADD BATTLEFIELD TO ADMIN MAP (THIS WAS MISSING) */
+  L.polygon(battlefieldCoords,{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(adminMap);
+
   setTimeout(()=>{
     adminMap.invalidateSize();
-    adminMap.setView([-26.4103,152.9258],18);
-  }, 400);
+  },500);
 }
 
 /* ================= TEAM ================= */
@@ -245,14 +250,13 @@ function joinGame(){
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
-
     showScreen("adminScreen");
+    initAdminMap();
 
-    // 🔥 IMPORTANT: wait for DOM render BEFORE map init
+    /* 🔥 FIX: FORCE RENDER AFTER SCREEN IS VISIBLE */
     setTimeout(()=>{
-      initAdminMap();
-    },150);
-
+      adminMap.invalidateSize();
+    },300);
   }
 }
 
@@ -309,6 +313,7 @@ db.ref("players").on("value", snap=>{
 
     if(adminMap){
       const aid = "a_"+id;
+
       if(!markers[aid]){
         markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
