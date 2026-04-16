@@ -93,21 +93,6 @@
       font-size:34px;
       z-index:9999;
     }
-
-    .adminDot {
-      width:18px;
-      height:18px;
-      border-radius:50%;
-      background:purple;
-      box-shadow:0 0 15px purple;
-      animation:pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform:scale(1); opacity:1; }
-      50% { transform:scale(1.8); opacity:0.4; }
-      100% { transform:scale(1); opacity:1; }
-    }
   </style>
 </head>
 
@@ -150,9 +135,9 @@
 
 <script>
 
-/* FIREBASE */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
@@ -160,25 +145,65 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER */
+/* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
 let team = null;
-let isAdmin = false;
 
-/* MAPS */
+/* ================= MAPS ================= */
 let map = null;
 let adminMap = null;
-let adminMarker = null;
 
-/* SCREEN */
+/* 🔥 FIX: battlefield shared layer */
+let battlefieldLayer = null;
+
+/* ================= SCREEN CONTROL ================= */
 function showScreen(id){
   document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
   document.getElementById(id).style.display="flex";
+
+  // IMPORTANT FIX: Leaflet must redraw after visibility change
+  setTimeout(()=>{
+    if(map) map.invalidateSize();
+    if(adminMap) adminMap.invalidateSize();
+  },200);
 }
 
-/* ================= MAP ================= */
+/* ================= BATTLEFIELD ================= */
+const battlefieldCoords = [
+  [-26.410576,152.925350],
+  [-26.410366,152.926038],
+  [-26.410319,152.926016],
+  [-26.410285,152.926102],
+  [-26.410297,152.926128],
+  [-26.410200,152.926429],
+  [-26.410081,152.926291],
+  [-26.410020,152.926272],
+  [-26.409833,152.926069],
+  [-26.409810,152.926023],
+  [-26.409807,152.925945],
+  [-26.409696,152.925928],
+  [-26.409707,152.925760],
+  [-26.409786,152.925749],
+  [-26.409809,152.925480],
+  [-26.410572,152.925348]
+];
+
+function addBattlefield(targetMap){
+  if(!targetMap) return;
+
+  if(battlefieldLayer){
+    targetMap.removeLayer(battlefieldLayer);
+  }
+
+  battlefieldLayer = L.polygon(battlefieldCoords,{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(targetMap);
+}
+
+/* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
 
@@ -189,29 +214,7 @@ function initMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(map);
 
-  /* ✅ BATTLEFIELD RESTORED */
-  L.polygon([
-    [-26.410576,152.925350],
-    [-26.410366,152.926038],
-    [-26.410319,152.926016],
-    [-26.410285,152.926102],
-    [-26.410297,152.926128],
-    [-26.410200,152.926429],
-    [-26.410081,152.926291],
-    [-26.410020,152.926272],
-    [-26.409833,152.926069],
-    [-26.409810,152.926023],
-    [-26.409807,152.925945],
-    [-26.409696,152.925928],
-    [-26.409707,152.925760],
-    [-26.409786,152.925749],
-    [-26.409809,152.925480],
-    [-26.410572,152.925348]
-  ],{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(map);
-
+  addBattlefield(map);
   setTimeout(()=>map.invalidateSize(),300);
 }
 
@@ -226,28 +229,9 @@ function initAdminMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
 
-  /* optional but correct */
-  L.polygon([
-    [-26.410576,152.925350],
-    [-26.410366,152.926038],
-    [-26.410319,152.926016],
-    [-26.410285,152.926102],
-    [-26.410297,152.926128],
-    [-26.410200,152.926429],
-    [-26.410081,152.926291],
-    [-26.410020,152.926272],
-    [-26.409833,152.926069],
-    [-26.409810,152.926023],
-    [-26.409807,152.925945],
-    [-26.409696,152.925928],
-    [-26.409707,152.925760],
-    [-26.409786,152.925749],
-    [-26.409809,152.925480],
-    [-26.410572,152.925348]
-  ],{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(adminMap);
+  addBattlefield(adminMap); // 🔥 FIX: admin now gets battlefield too
+
+  setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
 /* ================= TEAM ================= */
@@ -274,7 +258,6 @@ function joinGame(){
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
-    isAdmin = true;
     showScreen("adminScreen");
     initAdminMap();
   }
@@ -289,7 +272,6 @@ function stopGame(){
 }
 
 function exitAdmin(){
-  isAdmin = false;
   showScreen("lobby");
 }
 
@@ -334,7 +316,6 @@ db.ref("players").on("value", snap=>{
 
     if(adminMap){
       const aid = "a_"+id;
-
       if(!markers[aid]){
         markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
@@ -342,6 +323,7 @@ db.ref("players").on("value", snap=>{
         markers[aid].setIcon(icon);
       }
     }
+
   });
 });
 
