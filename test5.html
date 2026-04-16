@@ -194,7 +194,9 @@ function initMap(){
     fillOpacity:0.4
   }).addTo(map);
 
-  setTimeout(()=>map.invalidateSize(),300);
+  setTimeout(()=>{
+    map.invalidateSize();
+  },300);
 }
 
 /* ================= ADMIN MAP ================= */
@@ -207,6 +209,12 @@ function initAdminMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
+
+  // 🔥 CRITICAL FIX FOR BLANK MAP
+  setTimeout(()=>{
+    adminMap.invalidateSize();
+    adminMap.setView([-26.4103,152.9258],18);
+  }, 400);
 }
 
 /* ================= TEAM ================= */
@@ -237,13 +245,14 @@ function joinGame(){
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
-    showScreen("adminScreen");
-    initAdminMap();
 
-    // FIX: force proper tile rendering AFTER visible
+    showScreen("adminScreen");
+
+    // 🔥 IMPORTANT: wait for DOM render BEFORE map init
     setTimeout(()=>{
-      adminMap.invalidateSize();
-    },200);
+      initAdminMap();
+    },150);
+
   }
 }
 
