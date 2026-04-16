@@ -174,9 +174,12 @@ function initMap(){
 
   map = L.map('map').setView([-26.4103,152.9258],18);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    opacity:0.8
-  }).addTo(map);
+  L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {
+    opacity: 1
+  }
+).addTo(map);
 
   L.polygon([
     [-26.410576,152.925350],
