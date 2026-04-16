@@ -329,7 +329,7 @@ db.ref("players").on("value",snap=>{
     const p=data[id];
     if(!p.lat) return;
 
-    let visible = isAdmin || p.team===team || p.camped;
+    let visible = true;
 
     if(!visible){
       if(markers[id]) map.removeLayer(markers[id]);
@@ -342,7 +342,8 @@ db.ref("players").on("value",snap=>{
     });
 
     if(!markers[id]){
-      markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+   markers[id]=L.marker([p.lat,p.lng],{icon});
+markers[id].addTo(map);
     } else {
       markers[id].setLatLng([p.lat,p.lng]);
     }
