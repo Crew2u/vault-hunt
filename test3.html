@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - HUD BUILD</title>
+  <title>Domination Gelball - FIXED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -15,15 +15,13 @@
       overflow:hidden;
     }
 
-    #map {
-      height:100vh;
-      width:100%;
-      filter: contrast(1.1) brightness(0.9);
+    .screen {
+      position:fixed;
+      inset:0;
+      display:none;
     }
 
     #lobby {
-      position:fixed;
-      inset:0;
       display:flex;
       flex-direction:column;
       justify-content:center;
@@ -44,11 +42,11 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #waitingScreen {
-      position:fixed;
-      inset:0;
-      display:none;
-      z-index:5000;
+    #gameScreen { background:#000; }
+
+    #map {
+      height:100vh;
+      width:100%;
     }
 
     #hud {
@@ -58,9 +56,31 @@
       background:rgba(0,0,0,0.7);
       padding:10px;
       border-radius:8px;
-      font-size:14px;
       z-index:1000;
-      backdrop-filter: blur(6px);
+    }
+
+    #adminBtn {
+      position:absolute;
+      bottom:10px;
+      right:10px;
+      width:40px;
+      height:40px;
+      opacity:0.05;
+      z-index:10000;
+    }
+
+    #adminScreen {
+      background:#000;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      z-index:10000;
+    }
+
+    #adminMap {
+      width:90%;
+      height:60%;
+      margin-top:20px;
     }
 
     #centerText {
@@ -69,50 +89,15 @@
       left:50%;
       transform:translate(-50%,-50%);
       font-size:34px;
-      font-weight:bold;
       z-index:9999;
-      text-shadow:0 0 10px black;
-      pointer-events:none;
-    }
-
-    #radar {
-      position:absolute;
-      bottom:20px;
-      left:20px;
-      width:140px;
-      height:140px;
-      border-radius:50%;
-      border:2px solid rgba(0,255,200,0.4);
-      box-shadow:0 0 20px rgba(0,255,200,0.2);
-      overflow:hidden;
-      z-index:1000;
-      background:rgba(0,0,0,0.2);
-    }
-
-    #radar::after {
-      content:"";
-      position:absolute;
-      width:100%;
-      height:2px;
-      background:rgba(0,255,200,0.5);
-      top:50%;
-      animation: sweep 2s linear infinite;
-    }
-
-    @keyframes sweep {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    .leaflet-container {
-      background:#0b0f14 !important;
     }
   </style>
 </head>
 
 <body>
 
-<div id="lobby">
+<!-- LOBBY -->
+<div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
 
@@ -120,12 +105,24 @@
   <button class="teamBtn" onclick="selectTeam('green')">GREEN</button>
 
   <button onclick="joinGame()">JOIN GAME</button>
+
+  <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
-<div id="waitingScreen">
+<!-- GAME -->
+<div id="gameScreen" class="screen">
   <div id="map"></div>
-  <div id="hud">Waiting for game...</div>
-  <div id="radar"></div>
+  <div id="hud">Waiting...</div>
+</div>
+
+<!-- ADMIN -->
+<div id="adminScreen" class="screen">
+  <h2>ADMIN PANEL</h2>
+  <button onclick="startGame()">START</button>
+  <button onclick="stopGame()">STOP</button>
+  <button onclick="exitAdmin()">EXIT</button>
+
+  <div id="adminMap"></div>
 </div>
 
 <div id="centerText"></div>
@@ -138,7 +135,7 @@
 
 /* ================= FIREBASE ================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyD8TsM63_vHw4WiEMFohLMUo",
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
@@ -152,78 +149,91 @@ localStorage.setItem("playerId",playerId);
 
 let team = null;
 
-/* ================= MAP ================= */
-let map;
+/* ================= MAPS ================= */
+let map = null;
+let adminMap = null;
 
+/* ================= SAFE MARKER STORAGE ================= */
+const markersMain = {};
+const markersAdmin = {};
+
+/* ================= SAFE READY FLAGS ================= */
+let mapReady = false;
+let adminReady = false;
+
+/* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
 
-  map = L.map('map', {
-    zoomControl:true
-  }).setView([-26.4103,152.9258], 18);
+  map = L.map('map').setView([-26.4103,152.9258],18);
 
- L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  {
-    opacity: 1
-  }
-).addTo(map);
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, opacity: 1 }
+  ).addTo(map);
 
-  // ✅ FIXED: 50% TRANSPARENT BATTLEFIELD
-  L.polygon([
-    [-26.410576,152.925350],
-    [-26.410366,152.926038],
-    [-26.410319,152.926016],
-    [-26.410285,152.926102],
-    [-26.410297,152.926128],
-    [-26.410200,152.926429],
-    [-26.410081,152.926291],
-    [-26.410020,152.926272],
-    [-26.409833,152.926069],
-    [-26.409810,152.926023],
-    [-26.409807,152.925945],
-    [-26.409696,152.925928],
-    [-26.409707,152.925760],
-    [-26.409786,152.925749],
-    [-26.409809,152.925480],
-    [-26.410572,152.925348]
-  ], {
-    color:"#00bfff",
-    weight: 2,
-    opacity: 0.8,
-    fillColor: "#00bfff",
-    fillOpacity: 0.5   // 🔥 THIS IS THE 50% TRANSPARENCY FIX
-  }).addTo(map);
+  mapReady = true;
+}
 
-  setTimeout(()=>map.invalidateSize(),400);
+/* ================= ADMIN MAP ================= */
+function initAdminMap(){
+  if(adminMap) return;
+
+  adminMap = L.map('adminMap').setView([-26.4103,152.9258],18);
+
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, opacity: 1 }
+  ).addTo(adminMap);
+
+  adminReady = true;
 }
 
 /* ================= TEAM ================= */
-function selectTeam(t){
-  team = t;
-}
+function selectTeam(t){ team = t; }
 
-/* ================= JOIN GAME ================= */
+/* ================= JOIN ================= */
 function joinGame(){
   const name = document.getElementById("name").value;
   if(!name || !team) return alert("Enter name + team");
 
-  document.getElementById("lobby").style.display="none";
-  document.getElementById("waitingScreen").style.display="block";
-
+  showScreen("gameScreen");
   initMap();
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
-      name,
-      team,
+      name, team,
       lat:pos.coords.latitude,
       lng:pos.coords.longitude
     });
   });
 }
 
-/* ================= GPS TRACKING ================= */
+/* ================= SCREEN CONTROL ================= */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="flex";
+
+  setTimeout(()=>{
+    if(map) map.invalidateSize();
+    if(adminMap) adminMap.invalidateSize();
+  },200);
+}
+
+/* ================= ADMIN ================= */
+function adminLogin(){
+  const code = prompt("Admin Code");
+  if(code === "1288"){
+    showScreen("adminScreen");
+    initAdminMap();
+  }
+}
+
+function startGame(){ db.ref("game").set({state:"live"}); }
+function stopGame(){ db.ref("game").set({state:"ended"}); }
+function exitAdmin(){ showScreen("lobby"); }
+
+/* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
   db.ref("players/"+playerId).update({
     lat:pos.coords.latitude,
@@ -231,61 +241,45 @@ navigator.geolocation.watchPosition(pos=>{
   });
 });
 
-/* ================= RENDER PLAYERS ================= */
-const markers = {};
-
+/* ================= 🔥 FIXED RENDER ENGINE ================= */
 db.ref("players").on("value", snap=>{
   const data = snap.val();
-  if(!data || !map) return;
+  if(!data) return;
 
   Object.keys(data).forEach(id=>{
     const p = data[id];
     if(!p.lat || !p.lng) return;
 
-    const color = (p.team === "red") ? "red" : "lime";
+    const color = p.team === "red" ? "red" : "lime";
 
     const icon = L.divIcon({
-      className:"",
-      html:`
-        <div style="
-          width:14px;
-          height:14px;
-          border-radius:50%;
-          background:${color};
-          box-shadow:0 0 12px ${color};
-        "></div>
-      `
+      html:`<div style="
+        width:14px;height:14px;
+        background:${color};
+        border-radius:50%;
+        box-shadow:0 0 10px ${color};
+      "></div>`
     });
 
-    if(!markers[id]){
-      markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
-    } else {
-      markers[id].setLatLng([p.lat,p.lng]);
-      markers[id].setIcon(icon);
+    /* MAIN MAP SAFE */
+    if(mapReady && map){
+      if(!markersMain[id]){
+        markersMain[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
+      } else {
+        markersMain[id].setLatLng([p.lat,p.lng]);
+      }
     }
 
+    /* ADMIN MAP SAFE */
+    if(adminReady && adminMap){
+      if(!markersAdmin[id]){
+        markersAdmin[id] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      } else {
+        markersAdmin[id].setLatLng([p.lat,p.lng]);
+      }
+    }
   });
 });
-
-/* ================= ADMIN ================= */
-function startGame(){
-  db.ref("game").set({state:"live"});
-}
-
-function stopGame(){
-  db.ref("game").set({state:"ended"});
-}
-
-/* ================= HUD LOOP ================= */
-setInterval(()=>{
-  db.ref("game").once("value").then(s=>{
-    const g = s.val();
-    if(!g) return;
-
-    document.getElementById("hud").innerHTML =
-      "STATE: " + g.state;
-  });
-},1000);
 
 </script>
 
