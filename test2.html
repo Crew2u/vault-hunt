@@ -43,7 +43,7 @@
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
     #map { height:100vh; width:100%; }
-    #adminMap { width:100%; height:100%; }
+    #adminMap { height:100%; width:100%; }
 
     #hud {
       position:absolute;
@@ -86,7 +86,6 @@
       opacity:0.05;
       z-index:10000;
     }
-
   </style>
 </head>
 
@@ -119,9 +118,8 @@
   <div id="adminControls">
     <button onclick="startGame()">START</button>
     <button onclick="stopGame()">STOP</button>
-    <button onclick="setDominationLive()">SET POINT LIVE</button>
+    <button onclick="setDomination()">SET POINT</button>
     <button onclick="exitAdmin()">EXIT</button>
-    <div style="font-size:12px;">Tap map to move point, then press SET</div>
   </div>
 </div>
 
@@ -153,7 +151,8 @@ let playerLng = null;
 let map = null;
 let adminMap = null;
 let domMarker = null;
-let adminTempMarker = null;
+
+/* DOMINATION TEMP */
 let tempPoint = null;
 
 /* SCREEN */
@@ -167,6 +166,27 @@ function showScreen(id){
   },300);
 }
 
+/* 🔥 ORIGINAL BATTLEFIELD COORDINATES (UNCHANGED) */
+const battlefieldCoords = [
+  [-26.410576,152.925350],
+  [-26.410366,152.926038],
+  [-26.410319,152.926016],
+  [-26.410285,152.926102],
+  [-26.410297,152.926128],
+  [-26.410200,152.926429],
+  [-26.410081,152.926291],
+  [-26.410020,152.926272],
+  [-26.410020,152.926272],
+  [-26.409833,152.926069],
+  [-26.409810,152.926023],
+  [-26.409807,152.925945],
+  [-26.409696,152.925928],
+  [-26.409707,152.925760],
+  [-26.409786,152.925749],
+  [-26.409809,152.925480],
+  [-26.410572,152.925348]
+];
+
 /* MAP INIT */
 function initMap(){
   if(map) return;
@@ -174,31 +194,13 @@ function initMap(){
   map = L.map('map').setView([-26.4103,152.9258],18);
 
   L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 19 }
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(map);
 
-  // ORIGINAL BATTLEFIELD (UNCHANGED)
-  L.polygon([
-    [-26.410576,152.925350],
-    [-26.410366,152.926038],
-    [-26.410319,152.926016],
-    [-26.410285,152.926102],
-    [-26.410297,152.926128],
-    [-26.410200,152.926429],
-    [-26.410081,152.926291],
-    [-26.410020,152.926272],
-    [-26.409833,152.926069],
-    [-26.409810,152.926023],
-    [-26.409807,152.925945],
-    [-26.409696,152.925928],
-    [-26.409707,152.925760],
-    [-26.409786,152.925749],
-    [-26.409809,152.925480],
-    [-26.410572,152.925348]
-  ],{
+  // ✔ PLAYER MAP BATTLEFIELD
+  L.polygon(battlefieldCoords,{
     color:"#00bfff",
-    fillOpacity:0.4
+    fillOpacity:0.3
   }).addTo(map);
 }
 
@@ -212,14 +214,16 @@ function initAdminMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(adminMap);
 
+  // 🔥 FIXED: ADMIN MAP NOW ALSO SHOWS BATTLEFIELD
+  L.polygon(battlefieldCoords,{
+    color:"#00bfff",
+    fillOpacity:0.3
+  }).addTo(adminMap);
+
   adminMap.on("click", e=>{
     tempPoint = e.latlng;
-
-    if(!adminTempMarker){
-      adminTempMarker = L.marker(e.latlng).addTo(adminMap);
-    } else {
-      adminTempMarker.setLatLng(e.latlng);
-    }
+    if(domMarker) domMarker.setLatLng(e.latlng);
+    else domMarker = L.circleMarker(e.latlng,{radius:10,color:"yellow"}).addTo(adminMap);
   });
 }
 
@@ -252,12 +256,12 @@ function adminLogin(){
   }
 }
 
-function setDominationLive(){
-  if(!tempPoint) return alert("Tap map first");
+function setDomination(){
+  if(!tempPoint) return alert("Tap admin map first");
 
   db.ref("dominationPoint").set({
-    lat:tempPoint.lat,
-    lng:tempPoint.lng
+    lat: tempPoint.lat,
+    lng: tempPoint.lng
   });
 }
 
@@ -305,13 +309,13 @@ db.ref("players").on("value", snap=>{
 
     if(map){
       if(!markers[id]) markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-      else markers[id].setLatLng([p.lat,p.lng]).setIcon(icon);
+      else markers[id].setLatLng([p.lat,p.lng]);
     }
 
     if(adminMap){
       const aid="a_"+id;
       if(!markers[aid]) markers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
-      else markers[aid].setLatLng([p.lat,p.lng]).setIcon(icon);
+      else markers[aid].setLatLng([p.lat,p.lng]);
     }
   });
 });
@@ -353,8 +357,7 @@ setInterval(()=>{
       db.ref("players/"+playerId).once("value").then(pSnap=>{
         const p = pSnap.val();
         if(!p) return;
-
-        db.ref("scores/"+p.team).transaction(s=> (s||0)+1);
+        db.ref("scores/"+p.team).transaction(s=>(s||0)+1);
       });
     }
   });
@@ -363,7 +366,8 @@ setInterval(()=>{
 /* SCOREBOARD */
 db.ref("scores").on("value", snap=>{
   const s = snap.val() || {red:0,green:0};
-  document.getElementById("scoreboardGame").innerText = `🔴 ${s.red} | 🟢 ${s.green}`;
+  document.getElementById("scoreboardGame").innerText =
+    `🔴 ${s.red} | 🟢 ${s.green}`;
 });
 
 /* HUD */
@@ -371,8 +375,8 @@ db.ref("game").on("value", snap=>{
   const g = snap.val();
   const hud = document.getElementById("hud");
 
-  if(!g) return hud.innerText="Waiting...";
-  if(g.state==="live") hud.innerText="🔥 GAME LIVE";
+  if(!g) hud.innerText="Waiting...";
+  else if(g.state==="live") hud.innerText="🔥 GAME LIVE";
   else hud.innerText="🛑 GAME ENDED";
 });
 
