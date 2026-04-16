@@ -159,11 +159,12 @@ function joinGame(){
   document.getElementById("lobby").style.display="none";
   document.getElementById("waitingScreen").style.display="block";
 
-  initMap(); // 🔥 IMPORTANT
+  initMap();
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
-      name,team,
+      name,
+      team,
       lat:pos.coords.latitude,
       lng:pos.coords.longitude
     });
@@ -187,35 +188,33 @@ db.ref("players").on("value",snap=>{
 
   Object.keys(data).forEach(id=>{
     const p=data[id];
+
     console.log("PLAYER:", id, p.team, p.lat, p.lng);
+
     if (p.lat == null || p.lng == null) return;
-const team = (p.team || "").toLowerCase().trim();
-    try {
 
-     const team = p.team || "unknown";
+    // ✅ FIXED: single clean normalized team
+    const cleanTeam = (p.team || "").toLowerCase().trim();
 
-const color =
-  team === "red" ? "red" :
-  team === "green" ? "lime" :
-  "white";
+    const color =
+      cleanTeam === "red" ? "red" :
+      cleanTeam === "green" ? "lime" :
+      "white";
 
-const icon = L.divIcon({
-  html:`<div style="
-    width:12px;height:12px;
-    background:${color};
-    border-radius:50%;
-    box-shadow:0 0 10px ${color};
-  "></div>`
-});
+    const icon = L.divIcon({
+      html:`<div style="
+        width:12px;height:12px;
+        background:${color};
+        border-radius:50%;
+        box-shadow:0 0 10px ${color};
+      "></div>`
+    });
 
-      if(!markers[id]){
-        markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-      } else {
-        markers[id].setLatLng([p.lat,p.lng]);
-      }
-
-    } catch(e){
-      console.log("marker error ignored",e);
+    if(!markers[id]){
+      markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+    } else {
+      markers[id].setLatLng([p.lat,p.lng]);
+      markers[id].setIcon(icon);
     }
 
   });
