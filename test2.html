@@ -42,8 +42,10 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #map { height:100vh; width:100%; }
-    #adminMap { height:100%; width:100%; }
+    #map, #adminMap {
+      width:100%;
+      height:100%;
+    }
 
     #hud {
       position:absolute;
@@ -118,7 +120,6 @@
   <div id="adminControls">
     <button onclick="startGame()">START</button>
     <button onclick="stopGame()">STOP</button>
-    <button onclick="setDomination()">SET POINT</button>
     <button onclick="exitAdmin()">EXIT</button>
   </div>
 </div>
@@ -147,13 +148,14 @@ let team = null;
 let playerLat = null;
 let playerLng = null;
 
+/* ADMIN */
+let adminLat = null;
+let adminLng = null;
+
 /* MAPS */
 let map = null;
 let adminMap = null;
 let domMarker = null;
-
-/* DOMINATION TEMP */
-let tempPoint = null;
 
 /* SCREEN */
 function showScreen(id){
@@ -166,7 +168,7 @@ function showScreen(id){
   },300);
 }
 
-/* 🔥 ORIGINAL BATTLEFIELD COORDINATES (UNCHANGED) */
+/* BATTLEFIELD (UNCHANGED CORE LOGIC) */
 const battlefieldCoords = [
   [-26.410576,152.925350],
   [-26.410366,152.926038],
@@ -175,7 +177,6 @@ const battlefieldCoords = [
   [-26.410297,152.926128],
   [-26.410200,152.926429],
   [-26.410081,152.926291],
-  [-26.410020,152.926272],
   [-26.410020,152.926272],
   [-26.409833,152.926069],
   [-26.409810,152.926023],
@@ -187,7 +188,7 @@ const battlefieldCoords = [
   [-26.410572,152.925348]
 ];
 
-/* MAP INIT */
+/* MAP */
 function initMap(){
   if(map) return;
 
@@ -197,10 +198,9 @@ function initMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(map);
 
-  // ✔ PLAYER MAP BATTLEFIELD
   L.polygon(battlefieldCoords,{
     color:"#00bfff",
-    fillOpacity:0.3
+    fillOpacity:0.4
   }).addTo(map);
 }
 
@@ -214,17 +214,10 @@ function initAdminMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(adminMap);
 
-  // 🔥 FIXED: ADMIN MAP NOW ALSO SHOWS BATTLEFIELD
   L.polygon(battlefieldCoords,{
     color:"#00bfff",
-    fillOpacity:0.3
+    fillOpacity:0.4
   }).addTo(adminMap);
-
-  adminMap.on("click", e=>{
-    tempPoint = e.latlng;
-    if(domMarker) domMarker.setLatLng(e.latlng);
-    else domMarker = L.circleMarker(e.latlng,{radius:10,color:"yellow"}).addTo(adminMap);
-  });
 }
 
 /* TEAM */
@@ -247,24 +240,26 @@ function joinGame(){
   });
 }
 
-/* ADMIN */
+/* ADMIN LOGIN (RESTORED GPS TRACKING) */
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
     showScreen("adminScreen");
     initAdminMap();
+
+    navigator.geolocation.watchPosition(pos=>{
+      adminLat = pos.coords.latitude;
+      adminLng = pos.coords.longitude;
+
+      db.ref("admin").set({
+        lat: adminLat,
+        lng: adminLng
+      });
+    });
   }
 }
 
-function setDomination(){
-  if(!tempPoint) return alert("Tap admin map first");
-
-  db.ref("dominationPoint").set({
-    lat: tempPoint.lat,
-    lng: tempPoint.lng
-  });
-}
-
+/* ADMIN CONTROLS */
 function startGame(){
   db.ref("game").set({state:"live"});
   db.ref("scores").set({red:0,green:0});
@@ -278,7 +273,7 @@ function exitAdmin(){
   showScreen("lobby");
 }
 
-/* GPS */
+/* PLAYER GPS */
 navigator.geolocation.watchPosition(pos=>{
   playerLat = pos.coords.latitude;
   playerLng = pos.coords.longitude;
@@ -291,7 +286,7 @@ navigator.geolocation.watchPosition(pos=>{
   if(map) map.setView([playerLat,playerLng]);
 });
 
-/* PLAYERS */
+/* PLAYER RENDER */
 const markers = {};
 db.ref("players").on("value", snap=>{
   const data = snap.val();
@@ -320,64 +315,55 @@ db.ref("players").on("value", snap=>{
   });
 });
 
-/* DOMINATION POINT */
+/* ADMIN DOT (RESTORED) */
+const adminMarkers = {};
+db.ref("admin").on("value", snap=>{
+  const a = snap.val();
+  if(!a || !a.lat) return;
+
+  const icon = L.divIcon({
+    html:`<div style="
+      width:16px;height:16px;
+      background:purple;
+      border-radius:50%;
+      box-shadow:0 0 12px purple;
+      border:2px solid white;
+    "></div>`
+  });
+
+  if(map){
+    if(!adminMarkers.main){
+      adminMarkers.main = L.marker([a.lat,a.lng],{icon}).addTo(map);
+    } else {
+      adminMarkers.main.setLatLng([a.lat,a.lng]);
+    }
+  }
+
+  if(adminMap){
+    if(!adminMarkers.admin){
+      adminMarkers.admin = L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
+    } else {
+      adminMarkers.admin.setLatLng([a.lat,a.lng]);
+    }
+  }
+});
+
+/* DOMINATION */
 db.ref("dominationPoint").on("value", snap=>{
   const d = snap.val();
   if(!d) return;
 
   if(map){
     if(!domMarker){
-      domMarker = L.circle([d.lat,d.lng],{
-        radius:3,
-        color:"yellow"
-      }).addTo(map);
+      domMarker = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
     } else domMarker.setLatLng([d.lat,d.lng]);
   }
-});
 
-/* DISTANCE */
-function getDistance(lat1,lng1,lat2,lng2){
-  const R=6371000;
-  const dLat=(lat2-lat1)*Math.PI/180;
-  const dLng=(lng2-lng1)*Math.PI/180;
-  const a=Math.sin(dLat/2)**2+
-    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-
-/* SCORING */
-setInterval(()=>{
-  db.ref("dominationPoint").once("value").then(snap=>{
-    const d = snap.val();
-    if(!d || !playerLat) return;
-
-    const dist = getDistance(playerLat,playerLng,d.lat,d.lng);
-
-    if(dist <= 3){
-      db.ref("players/"+playerId).once("value").then(pSnap=>{
-        const p = pSnap.val();
-        if(!p) return;
-        db.ref("scores/"+p.team).transaction(s=>(s||0)+1);
-      });
-    }
-  });
-},1000);
-
-/* SCOREBOARD */
-db.ref("scores").on("value", snap=>{
-  const s = snap.val() || {red:0,green:0};
-  document.getElementById("scoreboardGame").innerText =
-    `🔴 ${s.red} | 🟢 ${s.green}`;
-});
-
-/* HUD */
-db.ref("game").on("value", snap=>{
-  const g = snap.val();
-  const hud = document.getElementById("hud");
-
-  if(!g) hud.innerText="Waiting...";
-  else if(g.state==="live") hud.innerText="🔥 GAME LIVE";
-  else hud.innerText="🛑 GAME ENDED";
+  if(adminMap){
+    if(!domMarker.admin){
+      domMarker.admin = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
+    } else domMarker.admin.setLatLng([d.lat,d.lng]);
+  }
 });
 
 </script>
