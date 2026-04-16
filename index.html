@@ -225,6 +225,12 @@ function joinGame(){
 
   lobby.style.display="none";
   waitingScreen.style.display="block";
+
+  // 🔥 FORCE MAP FIX
+  setTimeout(()=>{
+    map.invalidateSize();
+    map.setView([ -26.4103, 152.9258 ], 18);
+  }, 500);
 }
 
 /* ================= ADMIN ================= */
