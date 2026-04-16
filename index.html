@@ -94,7 +94,6 @@
       z-index:9999;
     }
 
-    /* 🔥 ADMIN PULSE DOT */
     .adminDot {
       width:18px;
       height:18px;
@@ -173,13 +172,13 @@ let map = null;
 let adminMap = null;
 let adminMarker = null;
 
-/* SCREEN CONTROL */
+/* SCREEN */
 function showScreen(id){
   document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
   document.getElementById(id).style.display="flex";
 }
 
-/* MAP INIT */
+/* ================= MAP ================= */
 function initMap(){
   if(map) return;
 
@@ -190,18 +189,33 @@ function initMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(map);
 
+  /* ✅ BATTLEFIELD RESTORED */
   L.polygon([
     [-26.410576,152.925350],
     [-26.410366,152.926038],
-    ...
+    [-26.410319,152.926016],
+    [-26.410285,152.926102],
+    [-26.410297,152.926128],
+    [-26.410200,152.926429],
+    [-26.410081,152.926291],
+    [-26.410020,152.926272],
+    [-26.409833,152.926069],
+    [-26.409810,152.926023],
+    [-26.409807,152.925945],
+    [-26.409696,152.925928],
+    [-26.409707,152.925760],
+    [-26.409786,152.925749],
+    [-26.409809,152.925480],
     [-26.410572,152.925348]
   ],{
     color:"#00bfff",
     fillOpacity:0.4
   }).addTo(map);
+
+  setTimeout(()=>map.invalidateSize(),300);
 }
 
-/* ADMIN MAP */
+/* ================= ADMIN MAP ================= */
 function initAdminMap(){
   if(adminMap) return;
 
@@ -211,12 +225,35 @@ function initAdminMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
+
+  /* optional but correct */
+  L.polygon([
+    [-26.410576,152.925350],
+    [-26.410366,152.926038],
+    [-26.410319,152.926016],
+    [-26.410285,152.926102],
+    [-26.410297,152.926128],
+    [-26.410200,152.926429],
+    [-26.410081,152.926291],
+    [-26.410020,152.926272],
+    [-26.409833,152.926069],
+    [-26.409810,152.926023],
+    [-26.409807,152.925945],
+    [-26.409696,152.925928],
+    [-26.409707,152.925760],
+    [-26.409786,152.925749],
+    [-26.409809,152.925480],
+    [-26.410572,152.925348]
+  ],{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(adminMap);
 }
 
-/* TEAM */
+/* ================= TEAM ================= */
 function selectTeam(t){ team = t; }
 
-/* JOIN */
+/* ================= JOIN ================= */
 function joinGame(){
   const name = document.getElementById("name").value;
   if(!name || !team) return alert("Enter name + team");
@@ -233,24 +270,16 @@ function joinGame(){
   });
 }
 
-/* ADMIN LOGIN */
+/* ================= ADMIN ================= */
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
     isAdmin = true;
-
-    db.ref("admin/status").set({
-      active:true,
-      lat:null,
-      lng:null
-    });
-
     showScreen("adminScreen");
     initAdminMap();
   }
 }
 
-/* ADMIN ACTIONS */
 function startGame(){
   db.ref("game").set({state:"live"});
 }
@@ -261,23 +290,18 @@ function stopGame(){
 
 function exitAdmin(){
   isAdmin = false;
-  db.ref("admin/status").set({active:false});
   showScreen("lobby");
 }
 
-/* GPS */
+/* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
-  const lat = pos.coords.latitude;
-  const lng = pos.coords.longitude;
-
-  db.ref("players/"+playerId).update({lat,lng});
-
-  if(isAdmin){
-    db.ref("admin/status").update({lat,lng});
-  }
+  db.ref("players/"+playerId).update({
+    lat:pos.coords.latitude,
+    lng:pos.coords.longitude
+  });
 });
 
-/* PLAYERS */
+/* ================= RENDER ================= */
 const markers = {};
 
 db.ref("players").on("value", snap=>{
@@ -319,33 +343,6 @@ db.ref("players").on("value", snap=>{
       }
     }
   });
-});
-
-/* 🔥 ADMIN DOT RENDER ON BOTH MAPS */
-db.ref("admin/status").on("value", snap=>{
-  const a = snap.val();
-  if(!a || !a.active || !a.lat) return;
-
-  const icon = L.divIcon({
-    className:"",
-    html:`<div class="adminDot"></div>`
-  });
-
-  if(map){
-    if(!adminMarker){
-      adminMarker = L.marker([a.lat,a.lng],{icon}).addTo(map);
-    } else {
-      adminMarker.setLatLng([a.lat,a.lng]);
-    }
-  }
-
-  if(adminMap){
-    if(!window.adminMarker2){
-      window.adminMarker2 = L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
-    } else {
-      window.adminMarker2.setLatLng([a.lat,a.lng]);
-    }
-  }
 });
 
 </script>
