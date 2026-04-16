@@ -205,10 +205,8 @@ function initAdminMap(){
 
   L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { opacity: 1 }
+    { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
-
-  setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
 /* ================= TEAM ================= */
@@ -241,6 +239,11 @@ function adminLogin(){
   if(code === "1288"){
     showScreen("adminScreen");
     initAdminMap();
+
+    // FIX: force proper tile rendering AFTER visible
+    setTimeout(()=>{
+      adminMap.invalidateSize();
+    },200);
   }
 }
 
@@ -304,7 +307,6 @@ db.ref("players").on("value", snap=>{
         markers[aid].setIcon(icon);
       }
     }
-
   });
 });
 
