@@ -42,9 +42,16 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #gameScreen { background:#000; }
+    #gameScreen, #adminScreen {
+      display:none;
+      width:100%;
+      height:100%;
+    }
 
-    #map { height:100vh; width:100%; }
+    #map, #adminMap {
+      width:100%;
+      height:100%;
+    }
 
     #hud {
       position:absolute;
@@ -75,20 +82,6 @@
       height:40px;
       opacity:0.05;
       z-index:10000;
-    }
-
-    #adminScreen {
-      background:#000;
-      flex-direction:column;
-      justify-content:center;
-      align-items:center;
-      z-index:10000;
-    }
-
-    #adminMap {
-      width:90%;
-      height:60%;
-      margin-top:20px;
     }
 
     #centerText {
@@ -127,10 +120,10 @@
 
 <!-- ADMIN -->
 <div id="adminScreen" class="screen">
-  <h2>ADMIN PANEL</h2>
-  <button onclick="startGame()">START</button>
-  <button onclick="stopGame()">STOP</button>
-  <button onclick="exitAdmin()">EXIT</button>
+  <h2 style="position:absolute;top:10px;">ADMIN PANEL</h2>
+  <button style="position:absolute;top:50px;" onclick="startGame()">START</button>
+  <button style="position:absolute;top:90px;" onclick="stopGame()">STOP</button>
+  <button style="position:absolute;top:130px;" onclick="exitAdmin()">EXIT</button>
 
   <div id="scoreboard">🔴 0 | 🟢 0</div>
   <div id="adminMap"></div>
@@ -159,24 +152,27 @@ let playerId = localStorage.getItem("playerId") || Math.random().toString(36).su
 localStorage.setItem("playerId",playerId);
 
 let team = null;
+let playerLat = null;
+let playerLng = null;
 
 /* MAPS */
 let map = null;
 let adminMap = null;
-
-/* DOMINATION */
 let domMarker = null;
 let adminDomMarker = null;
-let playerLat = null;
-let playerLng = null;
 
-/* SCREEN */
+/* SCREEN CONTROL */
 function showScreen(id){
   document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
-  document.getElementById(id).style.display="flex";
+  document.getElementById(id).style.display="block";
+
+  setTimeout(()=>{
+    if(map) map.invalidateSize();
+    if(adminMap) adminMap.invalidateSize();
+  },300);
 }
 
-/* MAP */
+/* MAP INIT */
 function initMap(){
   if(map) return;
 
@@ -186,8 +182,6 @@ function initMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { maxZoom: 19 }
   ).addTo(map);
-
-  setTimeout(()=>map.invalidateSize(),300);
 }
 
 /* ADMIN MAP */
@@ -206,8 +200,6 @@ function initAdminMap(){
       lng:e.latlng.lng
     });
   });
-
-  setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
 /* TEAM */
@@ -242,22 +234,13 @@ function adminLogin(){
   }
 }
 
-function showCenterMessage(text){
-  const el = document.getElementById("centerText");
-  el.innerText = text;
-  el.style.display = "block";
-  setTimeout(()=> el.style.display="none",2000);
-}
-
 function startGame(){
   db.ref("game").set({state:"live"});
   db.ref("scores").set({red:0,green:0});
-  showCenterMessage("🔥 GAME STARTED");
 }
 
 function stopGame(){
   db.ref("game").set({state:"ended"});
-  showCenterMessage("🛑 GAME OVER");
 }
 
 function exitAdmin(){
@@ -317,9 +300,7 @@ db.ref("dominationPoint").on("value", snap=>{
         radius:3,
         color:"yellow"
       }).addTo(map);
-    } else {
-      domMarker.setLatLng([d.lat,d.lng]);
-    }
+    } else domMarker.setLatLng([d.lat,d.lng]);
   }
 
   if(adminMap){
@@ -328,13 +309,11 @@ db.ref("dominationPoint").on("value", snap=>{
         radius:3,
         color:"yellow"
       }).addTo(adminMap);
-    } else {
-      adminDomMarker.setLatLng([d.lat,d.lng]);
-    }
+    } else adminDomMarker.setLatLng([d.lat,d.lng]);
   }
 });
 
-/* DISTANCE CHECK */
+/* DISTANCE */
 function getDistance(lat1,lng1,lat2,lng2){
   const R=6371000;
   const dLat=(lat2-lat1)*Math.PI/180;
@@ -344,7 +323,7 @@ function getDistance(lat1,lng1,lat2,lng2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-/* SCORE SYSTEM */
+/* SCORING */
 setInterval(()=>{
   db.ref("dominationPoint").once("value").then(snap=>{
     const d = snap.val();
@@ -355,13 +334,9 @@ setInterval(()=>{
     if(dist <= 3){
       db.ref("players/"+playerId).once("value").then(pSnap=>{
         const p = pSnap.val();
-        if(!p || !p.team) return;
+        if(!p) return;
 
-        const teamKey = p.team;
-
-        db.ref("scores/"+teamKey).transaction(score=>{
-          return (score||0) + 1;
-        });
+        db.ref("scores/"+p.team).transaction(s=> (s||0)+1);
       });
     }
   });
@@ -375,14 +350,14 @@ db.ref("scores").on("value", snap=>{
   });
 });
 
-/* GAME STATE HUD */
+/* HUD */
 db.ref("game").on("value", snap=>{
-  const game = snap.val();
+  const g = snap.val();
   const hud = document.getElementById("hud");
 
-  if(!game) return hud.innerText="Waiting...";
-  if(game.state==="live") hud.innerText="🔥 GAME LIVE";
-  else if(game.state==="ended") hud.innerText="🛑 GAME ENDED";
+  if(!g) return hud.innerText="Waiting...";
+  if(g.state==="live") hud.innerText="🔥 GAME LIVE";
+  else hud.innerText="🛑 GAME ENDED";
 });
 
 </script>
