@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - STABLE BUILD</title>
+  <title>Domination Gelball - FIXED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -41,6 +41,10 @@
     }
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
+
+    #gameScreen {
+      background:#000;
+    }
 
     #map {
       height:100vh;
@@ -89,11 +93,6 @@
       font-size:34px;
       z-index:9999;
     }
-
-    @keyframes flash {
-      from { opacity:1; }
-      to { opacity:0.3; }
-    }
   </style>
 </head>
 
@@ -133,9 +132,9 @@
 
 <script>
 
-/* FIREBASE */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigEMFohLMUo",
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
@@ -143,55 +142,24 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER */
+/* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
 let team = null;
 let isAdmin = false;
 
-/* MAPS */
+/* ================= MAPS ================= */
 let map = null;
 let adminMap = null;
 
-/* MARKERS */
-const markersMain = {};
-const markersAdmin = {};
-
-/* ADMIN DOT */
-let adminMarkerMain = null;
-let adminMarkerAdmin = null;
-
-/* BATTLEFIELD */
-const battlefieldCoords = [
-  [-26.410576,152.925350],
-  [-26.410366,152.926038],
-  [-26.410319,152.926016],
-  [-26.410285,152.926102],
-  [-26.410297,152.926128],
-  [-26.410200,152.926429],
-  [-26.410081,152.926291],
-  [-26.410020,152.926272],
-  [-26.409833,152.926069],
-  [-26.409810,152.926023],
-  [-26.409807,152.925945],
-  [-26.409696,152.925928],
-  [-26.409707,152.925760],
-  [-26.409786,152.925749],
-  [-26.409809,152.925480],
-  [-26.410572,152.925348]
-];
-
-function addBattlefield(target){
-  if(!target) return;
-
-  L.polygon(battlefieldCoords,{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(target);
+/* ================= SCREEN CONTROL ================= */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="flex";
 }
 
-/* MAP INIT */
+/* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
 
@@ -199,13 +167,35 @@ function initMap(){
 
   L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom:19 }
+    { maxZoom: 19, opacity: 1 }
   ).addTo(map);
 
-  addBattlefield(map);
+  L.polygon([
+    [-26.410576,152.925350],
+    [-26.410366,152.926038],
+    [-26.410319,152.926016],
+    [-26.410285,152.926102],
+    [-26.410297,152.926128],
+    [-26.410200,152.926429],
+    [-26.410081,152.926291],
+    [-26.410020,152.926272],
+    [-26.409833,152.926069],
+    [-26.409810,152.926023],
+    [-26.409807,152.925945],
+    [-26.409696,152.925928],
+    [-26.409707,152.925760],
+    [-26.409786,152.925749],
+    [-26.409809,152.925480],
+    [-26.410572,152.925348]
+  ],{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(map);
+
+  setTimeout(()=>map.invalidateSize(),300);
 }
 
-/* ADMIN MAP */
+/* ================= ADMIN MAP ================= */
 function initAdminMap(){
   if(adminMap) return;
 
@@ -213,33 +203,48 @@ function initAdminMap(){
 
   L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom:19 }
+    { maxZoom:19, opacity: 1 }
   ).addTo(adminMap);
 
-  addBattlefield(adminMap);
+  L.polygon([
+    [-26.410576,152.925350],
+    [-26.410366,152.926038],
+    [-26.410319,152.926016],
+    [-26.410285,152.926102],
+    [-26.410297,152.926128],
+    [-26.410200,152.926429],
+    [-26.410081,152.926291],
+    [-26.410020,152.926272],
+    [-26.409833,152.926069],
+    [-26.409810,152.926023],
+    [-26.409807,152.925945],
+    [-26.409696,152.925928],
+    [-26.409707,152.925760],
+    [-26.409786,152.925749],
+    [-26.409809,152.925480],
+    [-26.410572,152.925348]
+  ],{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(adminMap);
+
+  setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
-/* SCREEN */
-function showScreen(id){
-  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
-  document.getElementById(id).style.display="flex";
-
-  setTimeout(()=>{
-    if(map) map.invalidateSize();
-    if(adminMap) adminMap.invalidateSize();
-  },200);
-}
-
-/* TEAM */
+/* ================= TEAM ================= */
 function selectTeam(t){ team = t; }
 
-/* JOIN */
+/* ================= JOIN ================= */
 function joinGame(){
   const name = document.getElementById("name").value;
   if(!name || !team) return alert("Enter name + team");
 
   showScreen("gameScreen");
-  initMap();
+
+  setTimeout(()=>{
+    initMap();
+    map.invalidateSize();
+  },200);
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
@@ -250,7 +255,7 @@ function joinGame(){
   });
 }
 
-/* ADMIN */
+/* ================= ADMIN ================= */
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
@@ -260,53 +265,30 @@ function adminLogin(){
   }
 }
 
-function startGame(){ db.ref("game").set({state:"live"}); }
-function stopGame(){ db.ref("game").set({state:"ended"}); }
-function exitAdmin(){ showScreen("lobby"); }
-
-/* ADMIN DOT */
-function updateAdminMarker(lat,lng){
-
-  const icon = L.divIcon({
-    html:`<div style="
-      width:16px;height:16px;
-      border-radius:50%;
-      background:purple;
-      box-shadow:0 0 20px purple;
-      animation:flash 1s infinite alternate;
-    "></div>`
-  });
-
-  if(map){
-    if(!adminMarkerMain){
-      adminMarkerMain = L.marker([lat,lng],{icon}).addTo(map);
-    } else {
-      adminMarkerMain.setLatLng([lat,lng]);
-    }
-  }
-
-  if(adminMap){
-    if(!adminMarkerAdmin){
-      adminMarkerAdmin = L.marker([lat,lng],{icon}).addTo(adminMap);
-    } else {
-      adminMarkerAdmin.setLatLng([lat,lng]);
-    }
-  }
+function startGame(){
+  db.ref("game").set({state:"live"});
 }
 
-/* GPS */
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
+
+function exitAdmin(){
+  isAdmin = false;
+  showScreen("lobby");
+}
+
+/* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
-  const lat = pos.coords.latitude;
-  const lng = pos.coords.longitude;
-
-  db.ref("players/"+playerId).update({ lat, lng });
-
-  if(isAdmin){
-    updateAdminMarker(lat,lng);
-  }
+  db.ref("players/"+playerId).update({
+    lat:pos.coords.latitude,
+    lng:pos.coords.longitude
+  });
 });
 
-/* RENDER */
+/* ================= RENDER PLAYERS ================= */
+const markers = {};
+
 db.ref("players").on("value", snap=>{
   const data = snap.val();
   if(!data) return;
@@ -314,6 +296,23 @@ db.ref("players").on("value", snap=>{
   Object.keys(data).forEach(id=>{
     const p = data[id];
     if(!p.lat || !p.lng) return;
+
+    // ===== VISIBILITY FILTER =====
+    const isSelf = (id === playerId);
+    const isSameTeam = (p.team === team);
+
+    if(!isAdmin && !isSelf && !isSameTeam){
+      if(markers[id]){
+        if(map) map.removeLayer(markers[id]);
+        delete markers[id];
+      }
+      const aid = "a_"+id;
+      if(markers[aid]){
+        if(adminMap) adminMap.removeLayer(markers[aid]);
+        delete markers[aid];
+      }
+      return;
+    }
 
     const color = p.team === "red" ? "red" : "lime";
 
@@ -327,20 +326,24 @@ db.ref("players").on("value", snap=>{
     });
 
     if(map){
-      if(!markersMain[id]){
-        markersMain[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+      if(!markers[id]){
+        markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
       } else {
-        markersMain[id].setLatLng([p.lat,p.lng]);
+        markers[id].setLatLng([p.lat,p.lng]);
+        markers[id].setIcon(icon);
       }
     }
 
     if(adminMap){
-      if(!markersAdmin[id]){
-        markersAdmin[id]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      const aid = "a_"+id;
+      if(!markers[aid]){
+        markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
-        markersAdmin[id].setLatLng([p.lat,p.lng]);
+        markers[aid].setLatLng([p.lat,p.lng]);
+        markers[aid].setIcon(icon);
       }
     }
+
   });
 });
 
