@@ -188,7 +188,7 @@ db.ref("players").on("value",snap=>{
   Object.keys(data).forEach(id=>{
     const p=data[id];
     if (p.lat == null || p.lng == null) return;
-const team = p.team || "unknown";
+const team = (p.team || "").toLowerCase().trim();
     try {
 
      const team = p.team || "unknown";
