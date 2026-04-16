@@ -42,9 +42,7 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #gameScreen {
-      background:#000;
-    }
+    #gameScreen { background:#000; }
 
     #map {
       height:100vh;
@@ -155,53 +153,13 @@ let team = null;
 let map = null;
 let adminMap = null;
 
-/* 🔥 FIX: battlefield shared layer */
-let battlefieldLayer = null;
+/* ================= SAFE MARKER STORAGE ================= */
+const markersMain = {};
+const markersAdmin = {};
 
-/* ================= SCREEN CONTROL ================= */
-function showScreen(id){
-  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
-  document.getElementById(id).style.display="flex";
-
-  // IMPORTANT FIX: Leaflet must redraw after visibility change
-  setTimeout(()=>{
-    if(map) map.invalidateSize();
-    if(adminMap) adminMap.invalidateSize();
-  },200);
-}
-
-/* ================= BATTLEFIELD ================= */
-const battlefieldCoords = [
-  [-26.410576,152.925350],
-  [-26.410366,152.926038],
-  [-26.410319,152.926016],
-  [-26.410285,152.926102],
-  [-26.410297,152.926128],
-  [-26.410200,152.926429],
-  [-26.410081,152.926291],
-  [-26.410020,152.926272],
-  [-26.409833,152.926069],
-  [-26.409810,152.926023],
-  [-26.409807,152.925945],
-  [-26.409696,152.925928],
-  [-26.409707,152.925760],
-  [-26.409786,152.925749],
-  [-26.409809,152.925480],
-  [-26.410572,152.925348]
-];
-
-function addBattlefield(targetMap){
-  if(!targetMap) return;
-
-  if(battlefieldLayer){
-    targetMap.removeLayer(battlefieldLayer);
-  }
-
-  battlefieldLayer = L.polygon(battlefieldCoords,{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(targetMap);
-}
+/* ================= SAFE READY FLAGS ================= */
+let mapReady = false;
+let adminReady = false;
 
 /* ================= MAP INIT ================= */
 function initMap(){
@@ -214,8 +172,7 @@ function initMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(map);
 
-  addBattlefield(map);
-  setTimeout(()=>map.invalidateSize(),300);
+  mapReady = true;
 }
 
 /* ================= ADMIN MAP ================= */
@@ -229,9 +186,7 @@ function initAdminMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
 
-  addBattlefield(adminMap); // 🔥 FIX: admin now gets battlefield too
-
-  setTimeout(()=>adminMap.invalidateSize(),300);
+  adminReady = true;
 }
 
 /* ================= TEAM ================= */
@@ -254,6 +209,17 @@ function joinGame(){
   });
 }
 
+/* ================= SCREEN CONTROL ================= */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="flex";
+
+  setTimeout(()=>{
+    if(map) map.invalidateSize();
+    if(adminMap) adminMap.invalidateSize();
+  },200);
+}
+
 /* ================= ADMIN ================= */
 function adminLogin(){
   const code = prompt("Admin Code");
@@ -263,17 +229,9 @@ function adminLogin(){
   }
 }
 
-function startGame(){
-  db.ref("game").set({state:"live"});
-}
-
-function stopGame(){
-  db.ref("game").set({state:"ended"});
-}
-
-function exitAdmin(){
-  showScreen("lobby");
-}
+function startGame(){ db.ref("game").set({state:"live"}); }
+function stopGame(){ db.ref("game").set({state:"ended"}); }
+function exitAdmin(){ showScreen("lobby"); }
 
 /* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
@@ -283,9 +241,7 @@ navigator.geolocation.watchPosition(pos=>{
   });
 });
 
-/* ================= RENDER ================= */
-const markers = {};
-
+/* ================= 🔥 FIXED RENDER ENGINE ================= */
 db.ref("players").on("value", snap=>{
   const data = snap.val();
   if(!data) return;
@@ -305,25 +261,23 @@ db.ref("players").on("value", snap=>{
       "></div>`
     });
 
-    if(map){
-      if(!markers[id]){
-        markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
+    /* MAIN MAP SAFE */
+    if(mapReady && map){
+      if(!markersMain[id]){
+        markersMain[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
       } else {
-        markers[id].setLatLng([p.lat,p.lng]);
-        markers[id].setIcon(icon);
+        markersMain[id].setLatLng([p.lat,p.lng]);
       }
     }
 
-    if(adminMap){
-      const aid = "a_"+id;
-      if(!markers[aid]){
-        markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+    /* ADMIN MAP SAFE */
+    if(adminReady && adminMap){
+      if(!markersAdmin[id]){
+        markersAdmin[id] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
-        markers[aid].setLatLng([p.lat,p.lng]);
-        markers[aid].setIcon(icon);
+        markersAdmin[id].setLatLng([p.lat,p.lng]);
       }
     }
-
   });
 });
 
