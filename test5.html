@@ -3,75 +3,112 @@
 <head>
   <title>Domination Gelball - FIXED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; background:#000; color:white; overflow:hidden; }
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#000;
+      color:white;
+      overflow:hidden;
+    }
 
-    .screen { position:fixed; inset:0; display:none; }
+    .screen {
+      position:fixed;
+      inset:0;
+      display:none;
+    }
 
     #lobby {
-      display:flex; flex-direction:column; justify-content:center; align-items:center;
-      background:radial-gradient(circle,#111,#000); z-index:9999;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      background:radial-gradient(circle,#111,#000);
+      z-index:9999;
     }
 
     input {
-      padding:12px; margin:10px; width:240px; text-align:center;
-      background:#111; color:white; border:1px solid #333;
+      padding:12px;
+      margin:10px;
+      width:240px;
+      text-align:center;
+      background:#111;
+      color:white;
+      border:1px solid #333;
     }
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #map, #adminMap { height:100%; width:100%; }
-
-    #gameScreen { background:#000; }
-    #adminScreen {
-      background:#000; flex-direction:column; justify-content:center; align-items:center;
-      z-index:10000;
-    }
-
-    #adminMap { width:90%; height:60%; margin-top:20px; }
+    #map { height:100vh; width:100%; }
 
     #hud {
-      position:absolute; top:10px; right:10px;
-      background:rgba(0,0,0,0.7); padding:10px; border-radius:8px;
+      position:absolute;
+      top:10px;
+      right:10px;
+      background:rgba(0,0,0,0.7);
+      padding:10px;
+      border-radius:8px;
       z-index:1000;
     }
 
     #adminBtn {
-      position:absolute; bottom:10px; right:10px;
-      width:40px; height:40px; opacity:0.05; z-index:10000;
+      position:absolute;
+      bottom:10px;
+      right:10px;
+      width:40px;
+      height:40px;
+      opacity:0.05;
+      z-index:10000;
+    }
+
+    #adminMap {
+      width:90%;
+      height:60%;
+      margin-top:20px;
     }
 
     #centerText {
-      position:fixed; top:50%; left:50%;
+      position:fixed;
+      top:50%;
+      left:50%;
       transform:translate(-50%,-50%);
-      font-size:34px; z-index:9999;
+      font-size:34px;
+      z-index:9999;
     }
   </style>
 </head>
 
 <body>
 
+<!-- LOBBY -->
 <div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
+
   <button class="teamBtn" onclick="selectTeam('red')">RED</button>
   <button class="teamBtn" onclick="selectTeam('green')">GREEN</button>
+
   <button onclick="joinGame()">JOIN GAME</button>
+
   <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
+<!-- GAME -->
 <div id="gameScreen" class="screen">
   <div id="map"></div>
   <div id="hud">Waiting...</div>
 </div>
 
+<!-- ADMIN -->
 <div id="adminScreen" class="screen">
   <h2>ADMIN PANEL</h2>
   <button onclick="startGame()">START</button>
   <button onclick="stopGame()">STOP</button>
   <button onclick="exitAdmin()">EXIT</button>
+
   <div id="adminMap"></div>
 </div>
 
@@ -89,6 +126,7 @@ const firebaseConfig = {
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -102,6 +140,26 @@ let isAdmin = false;
 /* ================= MAPS ================= */
 let map = null;
 let adminMap = null;
+
+/* ================= FIELD ================= */
+const battlefieldCoords = [
+  [-26.410576,152.925350],
+  [-26.410366,152.926038],
+  [-26.410319,152.926016],
+  [-26.410285,152.926102],
+  [-26.410297,152.926128],
+  [-26.410200,152.926429],
+  [-26.410081,152.926291],
+  [-26.410020,152.926272],
+  [-26.409833,152.926069],
+  [-26.409810,152.926023],
+  [-26.409807,152.925945],
+  [-26.409696,152.925928],
+  [-26.409707,152.925760],
+  [-26.409786,152.925749],
+  [-26.409809,152.925480],
+  [-26.410572,152.925348]
+];
 
 /* ================= SCREEN ================= */
 function showScreen(id){
@@ -120,7 +178,7 @@ function initMap(){
     { maxZoom:19 }
   ).addTo(map);
 
-  addBattlefield(map);
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
 
   setTimeout(()=>map.invalidateSize(),300);
 }
@@ -135,35 +193,13 @@ function initAdminMap(){
     { maxZoom:19 }
   ).addTo(adminMap);
 
-  addBattlefield(adminMap);
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
 
   setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
-/* ================= BATTLEFIELD ================= */
-function addBattlefield(targetMap){
-  L.polygon([
-    [-26.410576,152.925350],
-    [-26.410366,152.926038],
-    [-26.410319,152.926016],
-    [-26.410285,152.926102],
-    [-26.410297,152.926128],
-    [-26.410200,152.926429],
-    [-26.410081,152.926291],
-    [-26.410020,152.926272],
-    [-26.409833,152.926069],
-    [-26.409810,152.926023],
-    [-26.409807,152.925945],
-    [-26.409696,152.925928],
-    [-26.409707,152.925760],
-    [-26.409786,152.925749],
-    [-26.409809,152.925480],
-    [-26.410572,152.925348]
-  ],{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(targetMap);
-}
+/* ================= TEAM ================= */
+function selectTeam(t){ team = t; }
 
 /* ================= JOIN ================= */
 function joinGame(){
@@ -171,30 +207,17 @@ function joinGame(){
   if(!name || !team) return alert("Enter name + team");
 
   showScreen("gameScreen");
+  setTimeout(()=>{ initMap(); map.invalidateSize(); },200);
 
-  setTimeout(()=>{
-    initMap();
-    map.invalidateSize();
-  },200);
+  const ref = db.ref("players/"+playerId);
 
-  const playerRef = db.ref("players/"+playerId);
-
-  navigator.geolocation.getCurrentPosition(pos=>{
-    playerRef.set({
-      name, team,
-      lat:pos.coords.latitude,
-      lng:pos.coords.longitude,
-      lastSeen: Date.now()
-    });
-
-    // 🔥 REMOVE ON DISCONNECT
-    playerRef.onDisconnect().remove();
+  ref.set({
+    name, team,
+    lat:0,lng:0,
+    isAdmin:false
   });
 
-  // 🔥 HEARTBEAT
-  setInterval(()=>{
-    playerRef.update({ lastSeen: Date.now() });
-  },5000);
+  ref.onDisconnect().remove();
 }
 
 /* ================= ADMIN ================= */
@@ -204,36 +227,35 @@ function adminLogin(){
     isAdmin = true;
     showScreen("adminScreen");
     initAdminMap();
+
+    db.ref("players/"+playerId).set({
+      name:"ADMIN",
+      team:"admin",
+      lat:0,lng:0,
+      isAdmin:true
+    });
   }
 }
 
-function startGame(){ db.ref("game").set({state:"live"}); }
-function stopGame(){ db.ref("game").set({state:"ended"}); }
-function exitAdmin(){ isAdmin=false; showScreen("lobby"); }
+function startGame(){
+  db.ref("game").set({state:"live"});
+}
+
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
+
+function exitAdmin(){
+  showScreen("lobby");
+}
 
 /* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
   db.ref("players/"+playerId).update({
     lat:pos.coords.latitude,
-    lng:pos.coords.longitude,
-    lastSeen: Date.now()
+    lng:pos.coords.longitude
   });
 });
-
-/* ================= CLEANUP (STALE PLAYERS) ================= */
-setInterval(()=>{
-  db.ref("players").once("value").then(snap=>{
-    const data = snap.val();
-    if(!data) return;
-
-    Object.keys(data).forEach(id=>{
-      const p = data[id];
-      if(Date.now() - (p.lastSeen || 0) > 15000){
-        db.ref("players/"+id).remove();
-      }
-    });
-  });
-},10000);
 
 /* ================= RENDER ================= */
 const markers = {};
@@ -242,40 +264,44 @@ db.ref("players").on("value", snap=>{
   const data = snap.val();
   if(!data) return;
 
+  Object.keys(markers).forEach(id=>{
+    if(!data[id]){
+      if(markers[id].map) markers[id].remove();
+      delete markers[id];
+    }
+  });
+
   Object.keys(data).forEach(id=>{
     const p = data[id];
     if(!p.lat || !p.lng) return;
 
-    const isSelf = (id === playerId);
-    const isSameTeam = (p.team === team);
+    const isPlayerAdmin = p.isAdmin;
 
-    if(!isAdmin && !isSelf && !isSameTeam){
-      if(markers[id]){
-        if(map) map.removeLayer(markers[id]);
-        delete markers[id];
-      }
-      const aid = "a_"+id;
-      if(markers[aid]){
-        if(adminMap) adminMap.removeLayer(markers[aid]);
-        delete markers[aid];
-      }
-      return;
+    if(!isAdmin){
+      if(!isPlayerAdmin && p.team !== team) return;
     }
 
-    const color = p.team === "red" ? "red" : "lime";
+    let color = "white";
+
+    if(isPlayerAdmin){
+      color = "purple";
+    } else {
+      color = p.team === "red" ? "red" : "lime";
+    }
 
     const icon = L.divIcon({
       html:`<div style="
         width:14px;height:14px;
         background:${color};
         border-radius:50%;
-        box-shadow:0 0 10px ${color};
+        box-shadow:0 0 12px ${color};
+        animation:${isPlayerAdmin ? "pulse 1s infinite" : "none"};
       "></div>`
     });
 
     if(map){
       if(!markers[id]){
-        markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
+        markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
       } else {
         markers[id].setLatLng([p.lat,p.lng]);
         markers[id].setIcon(icon);
@@ -283,9 +309,9 @@ db.ref("players").on("value", snap=>{
     }
 
     if(adminMap){
-      const aid = "a_"+id;
+      const aid="a_"+id;
       if(!markers[aid]){
-        markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+        markers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
         markers[aid].setLatLng([p.lat,p.lng]);
         markers[aid].setIcon(icon);
@@ -296,6 +322,14 @@ db.ref("players").on("value", snap=>{
 });
 
 </script>
+
+<style>
+@keyframes pulse {
+  0% { transform: scale(1); opacity:1; }
+  50% { transform: scale(1.5); opacity:0.6; }
+  100% { transform: scale(1); opacity:1; }
+}
+</style>
 
 </body>
 </html>
