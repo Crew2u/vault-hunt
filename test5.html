@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - HUD BUILD</title>
+  <title>Domination Gelball - FIXED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -15,15 +15,13 @@
       overflow:hidden;
     }
 
-    #map {
-      height:100vh;
-      width:100%;
-      filter: contrast(1.1) brightness(0.9);
+    .screen {
+      position:fixed;
+      inset:0;
+      display:none;
     }
 
     #lobby {
-      position:fixed;
-      inset:0;
       display:flex;
       flex-direction:column;
       justify-content:center;
@@ -44,39 +42,13 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #adminBtn {
-      position:absolute;
-      bottom:10px;
-      right:10px;
-      width:40px;
-      height:40px;
-      opacity:0.05;
-      z-index:10000;
-    }
-
-    #adminScreen {
-      position:fixed;
-      inset:0;
+    #gameScreen {
       background:#000;
-      display:none;
-      z-index:10000;
-      flex-direction:column;
-      justify-content:center;
-      align-items:center;
     }
 
-    #adminScreen button {
-      padding:16px 30px;
-      margin:10px;
-      font-size:18px;
-      cursor:pointer;
-    }
-
-    #waitingScreen {
-      position:fixed;
-      inset:0;
-      display:none;
-      z-index:5000;
+    #map {
+      height:100vh;
+      width:100%;
     }
 
     #hud {
@@ -89,20 +61,37 @@
       z-index:1000;
     }
 
+    #adminBtn {
+      position:absolute;
+      bottom:10px;
+      right:10px;
+      width:40px;
+      height:40px;
+      opacity:0.05;
+      z-index:10000;
+    }
+
+    #adminScreen {
+      background:#000;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      z-index:10000;
+    }
+
+    #adminMap {
+      width:90%;
+      height:60%;
+      margin-top:20px;
+    }
+
     #centerText {
       position:fixed;
       top:50%;
       left:50%;
       transform:translate(-50%,-50%);
       font-size:34px;
-      font-weight:bold;
       z-index:9999;
-    }
-
-    /* IMPORTANT FIX: admin map container must still render correctly */
-    #map {
-      height:100vh;
-      width:100%;
     }
   </style>
 </head>
@@ -110,7 +99,7 @@
 <body>
 
 <!-- LOBBY -->
-<div id="lobby">
+<div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
 
@@ -119,25 +108,23 @@
 
   <button onclick="joinGame()">JOIN GAME</button>
 
-  <!-- ADMIN ENTRY -->
   <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
-<!-- ADMIN SCREEN -->
-<div id="adminScreen">
-  <h2>ADMIN CONTROL</h2>
-  <button onclick="startGame()">START GAME</button>
-  <button onclick="stopGame()">STOP GAME</button>
-  <button onclick="exitAdmin()">EXIT</button>
-
-  <!-- ADMIN MAP (IMPORTANT ADDITION) -->
-  <div id="adminMap" style="width:90%;height:60%;margin-top:20px;"></div>
+<!-- GAME -->
+<div id="gameScreen" class="screen">
+  <div id="map"></div>
+  <div id="hud">Waiting...</div>
 </div>
 
-<!-- GAME SCREEN -->
-<div id="waitingScreen">
-  <div id="map"></div>
-  <div id="hud">Waiting for game...</div>
+<!-- ADMIN -->
+<div id="adminScreen" class="screen">
+  <h2>ADMIN PANEL</h2>
+  <button onclick="startGame()">START</button>
+  <button onclick="stopGame()">STOP</button>
+  <button onclick="exitAdmin()">EXIT</button>
+
+  <div id="adminMap"></div>
 </div>
 
 <div id="centerText"></div>
@@ -148,7 +135,7 @@
 
 <script>
 
-/* FIREBASE */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
   apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
@@ -158,28 +145,32 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER */
+/* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
 let team = null;
 
-/* MAPS */
-let map;
-let adminMap;
+/* ================= MAPS ================= */
+let map = null;
+let adminMap = null;
 
-/* MAIN MAP */
+/* ================= SCREEN CONTROL ================= */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="flex";
+}
+
+/* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
 
   map = L.map('map').setView([-26.4103,152.9258],18);
 
   L.tileLayer(
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  {
-    opacity: 1
-  }
-).addTo(map);
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, opacity: 1 }
+  ).addTo(map);
 
   L.polygon([
     [-26.410576,152.925350],
@@ -198,39 +189,42 @@ function initMap(){
     [-26.409786,152.925749],
     [-26.409809,152.925480],
     [-26.410572,152.925348]
-  ], {
+  ],{
     color:"#00bfff",
-    fillOpacity:0.5
+    fillOpacity:0.4
   }).addTo(map);
 
-  setTimeout(()=>map.invalidateSize(),400);
+  setTimeout(()=>map.invalidateSize(),300);
 }
 
-/* ADMIN MAP INIT (NEW) */
+/* ================= ADMIN MAP ================= */
 function initAdminMap(){
   if(adminMap) return;
 
   adminMap = L.map('adminMap').setView([-26.4103,152.9258],18);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    opacity:0.8
-  }).addTo(adminMap);
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { opacity: 1 }
+  ).addTo(adminMap);
 
-  setTimeout(()=>adminMap.invalidateSize(),400);
+  setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
-/* TEAM */
+/* ================= TEAM ================= */
 function selectTeam(t){ team = t; }
 
-/* JOIN */
+/* ================= JOIN ================= */
 function joinGame(){
   const name = document.getElementById("name").value;
   if(!name || !team) return alert("Enter name + team");
 
-  document.getElementById("lobby").style.display="none";
-  document.getElementById("waitingScreen").style.display="block";
+  showScreen("gameScreen");
 
-  initMap();
+  setTimeout(()=>{
+    initMap();
+    map.invalidateSize();
+  },200);
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
@@ -241,7 +235,28 @@ function joinGame(){
   });
 }
 
-/* GPS */
+/* ================= ADMIN ================= */
+function adminLogin(){
+  const code = prompt("Admin Code");
+  if(code === "1288"){
+    showScreen("adminScreen");
+    initAdminMap();
+  }
+}
+
+function startGame(){
+  db.ref("game").set({state:"live"});
+}
+
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
+
+function exitAdmin(){
+  showScreen("lobby");
+}
+
+/* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
   db.ref("players/"+playerId).update({
     lat:pos.coords.latitude,
@@ -249,7 +264,7 @@ navigator.geolocation.watchPosition(pos=>{
   });
 });
 
-/* RENDER MAIN MAP */
+/* ================= RENDER PLAYERS ================= */
 const markers = {};
 
 db.ref("players").on("value", snap=>{
@@ -267,53 +282,31 @@ db.ref("players").on("value", snap=>{
         width:14px;height:14px;
         background:${color};
         border-radius:50%;
-        box-shadow:0 0 12px ${color};
+        box-shadow:0 0 10px ${color};
       "></div>`
     });
 
-    if(!markers[id]){
-      markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
-    } else {
-      markers[id].setLatLng([p.lat,p.lng]);
-      markers[id].setIcon(icon);
+    if(map){
+      if(!markers[id]){
+        markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
+      } else {
+        markers[id].setLatLng([p.lat,p.lng]);
+        markers[id].setIcon(icon);
+      }
     }
 
-    /* ALSO SHOW ON ADMIN MAP */
     if(adminMap){
-      if(!markers["admin_"+id]){
-        markers["admin_"+id] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      const aid = "a_"+id;
+      if(!markers[aid]){
+        markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
-        markers["admin_"+id].setLatLng([p.lat,p.lng]);
-        markers["admin_"+id].setIcon(icon);
+        markers[aid].setLatLng([p.lat,p.lng]);
+        markers[aid].setIcon(icon);
       }
     }
 
   });
 });
-
-/* ADMIN */
-function adminLogin(){
-  const code = prompt("Admin Code");
-  if(code === "1288"){
-    document.getElementById("lobby").style.display="none";
-    document.getElementById("adminScreen").style.display="flex";
-
-    initAdminMap();
-  }
-}
-
-function startGame(){
-  db.ref("game").set({state:"live"});
-}
-
-function stopGame(){
-  db.ref("game").set({state:"ended"});
-}
-
-function exitAdmin(){
-  document.getElementById("adminScreen").style.display="none";
-  document.getElementById("lobby").style.display="flex";
-}
 
 </script>
 
