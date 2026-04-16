@@ -21,7 +21,6 @@
       filter: contrast(1.1) brightness(0.9);
     }
 
-    /* ===== LOBBY ===== */
     #lobby {
       position:fixed;
       inset:0;
@@ -45,7 +44,6 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    /* ===== WAITING SCREEN ===== */
     #waitingScreen {
       position:fixed;
       inset:0;
@@ -53,7 +51,6 @@
       z-index:5000;
     }
 
-    /* ===== HUD TOP BAR ===== */
     #hud {
       position:absolute;
       top:10px;
@@ -66,7 +63,6 @@
       backdrop-filter: blur(6px);
     }
 
-    /* ===== CENTER GAME TEXT ===== */
     #centerText {
       position:fixed;
       top:50%;
@@ -79,7 +75,6 @@
       pointer-events:none;
     }
 
-    /* ===== RADAR OVERLAY ===== */
     #radar {
       position:absolute;
       bottom:20px;
@@ -109,7 +104,6 @@
       100% { transform: rotate(360deg); }
     }
 
-    /* ===== MAP ENHANCEMENTS ===== */
     .leaflet-container {
       background:#0b0f14 !important;
     }
@@ -118,7 +112,6 @@
 
 <body>
 
-<!-- ===== LOBBY ===== -->
 <div id="lobby">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
@@ -129,7 +122,6 @@
   <button onclick="joinGame()">JOIN GAME</button>
 </div>
 
-<!-- ===== GAME SCREEN ===== -->
 <div id="waitingScreen">
   <div id="map"></div>
   <div id="hud">Waiting for game...</div>
@@ -146,7 +138,7 @@
 
 /* ================= FIREBASE ================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigEMFohLMUo",
+  apiKey: "AIzaSyD8TsM63_vHw4WiEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
@@ -174,7 +166,7 @@ function initMap(){
     opacity:0.8
   }).addTo(map);
 
-  // Battlefield perimeter (UNCHANGED LOGIC)
+  // ✅ FIXED: 50% TRANSPARENT BATTLEFIELD
   L.polygon([
     [-26.410576,152.925350],
     [-26.410366,152.926038],
@@ -194,7 +186,10 @@ function initMap(){
     [-26.410572,152.925348]
   ], {
     color:"#00bfff",
-    fillOpacity:0.12
+    weight: 2,
+    opacity: 0.8,
+    fillColor: "#00bfff",
+    fillOpacity: 0.5   // 🔥 THIS IS THE 50% TRANSPARENCY FIX
   }).addTo(map);
 
   setTimeout(()=>map.invalidateSize(),400);
@@ -269,7 +264,7 @@ db.ref("players").on("value", snap=>{
   });
 });
 
-/* ================= ADMIN (BASIC) ================= */
+/* ================= ADMIN ================= */
 function startGame(){
   db.ref("game").set({state:"live"});
 }
