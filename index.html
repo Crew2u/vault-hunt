@@ -1,21 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - MASTER FINAL</title>
+  <title>Domination Gelball - FIXED BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; background:#0b0f14; color:white; }
-    #map { height:100vh; }
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#000;
+      color:white;
+      overflow:hidden;
+    }
 
-    /* ===== LOBBY ===== */
+    .screen {
+      position:fixed;
+      inset:0;
+      display:none;
+    }
+
     #lobby {
-      position:fixed; inset:0;
-      display:flex; flex-direction:column;
-      justify-content:center; align-items:center;
-      background:radial-gradient(circle,#0b0f14,#000);
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      background:radial-gradient(circle,#111,#000);
       z-index:9999;
     }
 
@@ -29,79 +40,15 @@
       border:1px solid #333;
     }
 
-    .teamBtn {
-      padding:14px 24px;
-      margin:10px;
-      border:none;
-      cursor:pointer;
+    .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
+
+    #gameScreen {
+      background:#000;
     }
 
-    .selectedRed { background:red; box-shadow:0 0 20px red; }
-    .selectedGreen { background:lime; box-shadow:0 0 20px lime; }
-
-    #joinBtn { padding:14px 30px; margin-top:20px; }
-
-    /* ===== WAITING SCREEN ===== */
-    #waitingScreen {
-      position:fixed;
-      inset:0;
-      display:none;
-      z-index:5000;
-    }
-
-    #radar {
-      position:absolute;
-      top:50%;
-      left:50%;
-      width:260px;
-      height:260px;
-      border-radius:50%;
-      border:2px solid rgba(0,255,200,0.4);
-      transform:translate(-50%,-50%);
-    }
-
-    #waitingText {
-      position:absolute;
-      bottom:40px;
+    #map {
+      height:100vh;
       width:100%;
-      text-align:center;
-    }
-
-    /* ===== ADMIN ===== */
-    #adminHidden {
-      position:fixed;
-      bottom:5px;
-      right:5px;
-      width:30px;
-      height:30px;
-      opacity:0.05;
-      z-index:9999;
-    }
-
-    #adminPanel {
-      position:fixed;
-      bottom:10px;
-      left:10px;
-      background:rgba(0,0,0,0.8);
-      padding:10px;
-      border-radius:10px;
-      display:none;
-      z-index:9999;
-    }
-
-    #adminPanel button {
-      display:block;
-      margin:5px 0;
-      width:140px;
-    }
-
-    #centerText {
-      position:fixed;
-      top:50%;
-      left:50%;
-      transform:translate(-50%,-50%);
-      font-size:30px;
-      z-index:9999;
     }
 
     #hud {
@@ -110,43 +57,92 @@
       right:10px;
       background:rgba(0,0,0,0.7);
       padding:10px;
-      border-radius:10px;
+      border-radius:8px;
       z-index:1000;
+    }
+
+    #adminBtn {
+      position:absolute;
+      bottom:10px;
+      right:10px;
+      width:40px;
+      height:40px;
+      opacity:0.05;
+      z-index:10000;
+    }
+
+    #adminScreen {
+      background:#000;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      z-index:10000;
+    }
+
+    #adminMap {
+      width:90%;
+      height:60%;
+      margin-top:20px;
+    }
+
+    #centerText {
+      position:fixed;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      font-size:34px;
+      z-index:9999;
+    }
+
+    /* 🔥 ADMIN PULSE DOT */
+    .adminDot {
+      width:18px;
+      height:18px;
+      border-radius:50%;
+      background:purple;
+      box-shadow:0 0 15px purple;
+      animation:pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform:scale(1); opacity:1; }
+      50% { transform:scale(1.8); opacity:0.4; }
+      100% { transform:scale(1); opacity:1; }
     }
   </style>
 </head>
 
 <body>
 
-<div id="lobby">
+<!-- LOBBY -->
+<div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
 
-  <div>
-    <button id="redBtn" class="teamBtn" onclick="selectTeam('red')">RED</button>
-    <button id="greenBtn" class="teamBtn" onclick="selectTeam('green')">GREEN</button>
-  </div>
+  <button class="teamBtn" onclick="selectTeam('red')">RED</button>
+  <button class="teamBtn" onclick="selectTeam('green')">GREEN</button>
 
-  <button id="joinBtn" onclick="joinGame()">JOIN GAME</button>
+  <button onclick="joinGame()">JOIN GAME</button>
+
+  <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
-<div id="waitingScreen">
+<!-- GAME -->
+<div id="gameScreen" class="screen">
   <div id="map"></div>
-  <div id="radar"></div>
-  <div id="waitingText">WAITING FOR GAME START...</div>
+  <div id="hud">Waiting...</div>
 </div>
 
-<div id="adminHidden" onclick="adminLogin()"></div>
-
-<div id="adminPanel">
+<!-- ADMIN -->
+<div id="adminScreen" class="screen">
+  <h2>ADMIN PANEL</h2>
   <button onclick="startGame()">START</button>
-  <button onclick="pauseGame()">PAUSE</button>
-  <button onclick="resumeGame()">RESUME</button>
-  <button onclick="stopGame()">END</button>
-  <button onclick="resetGame()">RESET</button>
+  <button onclick="stopGame()">STOP</button>
+  <button onclick="exitAdmin()">EXIT</button>
+
+  <div id="adminMap"></div>
 </div>
 
-<div id="hud">Waiting...</div>
 <div id="centerText"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -155,271 +151,202 @@
 
 <script>
 
-/* ================= FIREBASE ================= */
+/* FIREBASE */
 const firebaseConfig = {
   apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* ================= PLAYER ================= */
+/* PLAYER */
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
-let team=null;
-let isAdmin=false;
+let team = null;
+let isAdmin = false;
 
-/* ================= MAP ================= */
-const map = L.map('map').setView([-26.4103,152.9258],18);
-setTimeout(() => {
-  map.invalidateSize();
-}, 800);
-L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{opacity:0.6}).addTo(map);
+/* MAPS */
+let map = null;
+let adminMap = null;
+let adminMarker = null;
 
-/* ================= ORIGINAL FIELD ================= */
-const battlefieldCoords = [
-  [-26.410576,152.925350],
-  [-26.410366,152.926038],
-  [-26.410319,152.926016],
-  [-26.410285,152.926102],
-  [-26.410297,152.926128],
-  [-26.410200,152.926429],
-  [-26.410081,152.926291],
-  [-26.410020,152.926272],
-  [-26.409833,152.926069],
-  [-26.409810,152.926023],
-  [-26.409807,152.925945],
-  [-26.409696,152.925928],
-  [-26.409707,152.925760],
-  [-26.409786,152.925749],
-  [-26.409809,152.925480],
-  [-26.410572,152.925348]
-];
-
-L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.1}).addTo(map);
-
-/* ================= TEAM ================= */
-function selectTeam(t){
-  team=t;
-  redBtn.classList.remove("selectedRed");
-  greenBtn.classList.remove("selectedGreen");
-  if(t==="red") redBtn.classList.add("selectedRed");
-  else greenBtn.classList.add("selectedGreen");
+/* SCREEN CONTROL */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="flex";
 }
 
-/* ================= JOIN ================= */
+/* MAP INIT */
+function initMap(){
+  if(map) return;
+
+  map = L.map('map').setView([-26.4103,152.9258],18);
+
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, opacity: 1 }
+  ).addTo(map);
+
+  L.polygon([
+    [-26.410576,152.925350],
+    [-26.410366,152.926038],
+    ...
+    [-26.410572,152.925348]
+  ],{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(map);
+}
+
+/* ADMIN MAP */
+function initAdminMap(){
+  if(adminMap) return;
+
+  adminMap = L.map('adminMap').setView([-26.4103,152.9258],18);
+
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, opacity: 1 }
+  ).addTo(adminMap);
+}
+
+/* TEAM */
+function selectTeam(t){ team = t; }
+
+/* JOIN */
 function joinGame(){
-  const name=document.getElementById("name").value;
-  if(!name||!team){alert("Enter name + team");return;}
+  const name = document.getElementById("name").value;
+  if(!name || !team) return alert("Enter name + team");
+
+  showScreen("gameScreen");
+  initMap();
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
-      name,team,
+      name, team,
       lat:pos.coords.latitude,
-      lng:pos.coords.longitude,
-      camped:false,
-      lastHit:0,
-      lastSeen:Date.now()
+      lng:pos.coords.longitude
     });
   });
+}
 
-  lobby.style.display="none";
-waitingScreen.style.display="block";
-
-setTimeout(()=>{
-  map.invalidateSize();
-  map.setView([-26.4103,152.9258],18);
-  map._onResize(); // 🔥 forces internal redraw
-}, 800);
-
-/* ================= ADMIN ================= */
+/* ADMIN LOGIN */
 function adminLogin(){
-  const code=prompt("Code");
-  if(code==="1288"){
-    isAdmin=true;
-    adminPanel.style.display="block";
-    showCenter("ADMIN MODE");
+  const code = prompt("Admin Code");
+  if(code === "1288"){
+    isAdmin = true;
+
+    db.ref("admin/status").set({
+      active:true,
+      lat:null,
+      lng:null
+    });
+
+    showScreen("adminScreen");
+    initAdminMap();
   }
 }
 
+/* ADMIN ACTIONS */
 function startGame(){
-  db.ref("game").set({state:"countdown",countdownStart:Date.now()});
-}
-function pauseGame(){ db.ref("game").update({state:"paused"}); }
-function resumeGame(){ db.ref("game").update({state:"live"}); }
-function stopGame(){ db.ref("game").update({state:"ended"}); }
-function resetGame(){
-  db.ref("game").set({state:"lobby"});
-  db.ref("scores").set({red:0,green:0});
+  db.ref("game").set({state:"live"});
 }
 
-/* ================= GAME STATE ================= */
-db.ref("game").on("value",snap=>{
-  const g=snap.val(); if(!g) return;
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
 
-  if(g.state==="countdown"){
-    const t=20-Math.floor((Date.now()-g.countdownStart)/1000);
-    showCenter("STARTING "+t);
-    if(t<=0){
-      db.ref("game").update({state:"live",startTime:Date.now()});
-    }
-  }
+function exitAdmin(){
+  isAdmin = false;
+  db.ref("admin/status").set({active:false});
+  showScreen("lobby");
+}
 
-  if(g.state==="live"){
-    waitingScreen.style.display="none";
-    showCenter("GAME ON");
-  }
+/* GPS */
+navigator.geolocation.watchPosition(pos=>{
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
 
-  if(g.state==="ended"){
-    showCenter("GAME OVER");
+  db.ref("players/"+playerId).update({lat,lng});
+
+  if(isAdmin){
+    db.ref("admin/status").update({lat,lng});
   }
 });
 
-/* ================= TIMER ================= */
-setInterval(()=>{
-  db.ref("game").once("value").then(s=>{
-    const g=s.val();
-    if(!g||g.state!=="live") return;
+/* PLAYERS */
+const markers = {};
 
-    const remain=600-Math.floor((Date.now()-g.startTime)/1000);
-    hud.innerHTML="Time: "+remain;
-
-    if(remain<=0){
-      db.ref("game").update({state:"ended"});
-    }
-  });
-},1000);
-
-/* ================= CAMPING ================= */
-let lastLat,lastLng,lastMove=Date.now();
-function checkCamping(lat,lng){
-  if(lastLat){
-    if(map.distance([lastLat,lastLng],[lat,lng])>5){
-      lastMove=Date.now();
-    }
-  }
-  lastLat=lat; lastLng=lng;
-  return (Date.now()-lastMove)>60000;
-}
-
-/* ================= GPS ================= */
-navigator.geolocation.watchPosition(pos=>{
-  const lat=pos.coords.latitude;
-  const lng=pos.coords.longitude;
-
-  const camped=checkCamping(lat,lng);
-
-  db.ref("players/"+playerId).update({
-    lat,lng,camped,lastSeen:Date.now()
-  });
-
-  checkRespawn(lat,lng);
-  checkDomination(lat,lng);
-
-},{enableHighAccuracy:true});
-
-/* ================= RENDER ================= */
-const markers={};
-
-db.ref("players").on("value",snap=>{
-  const data=snap.val(); if(!data) return;
+db.ref("players").on("value", snap=>{
+  const data = snap.val();
+  if(!data) return;
 
   Object.keys(data).forEach(id=>{
-    const p=data[id];
-    if(!p.lat) return;
+    const p = data[id];
+    if(!p.lat || !p.lng) return;
 
-    let visible = true;
+    const color = p.team === "red" ? "red" : "lime";
 
-    if(!visible){
-      if(markers[id]) map.removeLayer(markers[id]);
-      delete markers[id];
-      return;
-    }
-
-    const icon=L.divIcon({
-      html:`<div style="width:10px;height:10px;background:${p.team==="red"?"red":"lime"};border-radius:50%"></div>`
+    const icon = L.divIcon({
+      html:`<div style="
+        width:14px;height:14px;
+        background:${color};
+        border-radius:50%;
+        box-shadow:0 0 10px ${color};
+      "></div>`
     });
-map.invalidateSize();
-   if(!markers[id]){
-  markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-}
-    } else {
-      markers[id].setLatLng([p.lat,p.lng]);
-    }
-  });
-});
 
-/* ================= DOMINATION ================= */
-let domCircle;
-
-setInterval(()=>{
-  db.ref("game").once("value").then(s=>{
-    if(!s.val()||s.val().state!=="live") return;
-
-    const p=battlefieldCoords[Math.floor(Math.random()*battlefieldCoords.length)];
-
-    db.ref("domination").set({
-      lat:p[0],lng:p[1],controlling:null
-    });
-  });
-},180000);
-
-db.ref("domination").on("value",snap=>{
-  const d=snap.val(); if(!d) return;
-
-  if(domCircle) map.removeLayer(domCircle);
-
-  domCircle=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
-});
-
-function checkDomination(lat,lng){
-  db.ref("domination").once("value").then(s=>{
-    const d=s.val(); if(!d) return;
-
-    if(map.distance([lat,lng],[d.lat,d.lng])<3){
-      db.ref("domination").update({controlling:team});
-    }
-  });
-}
-
-setInterval(()=>{
-  db.ref("domination").once("value").then(s=>{
-    const d=s.val();
-    if(!d||!d.controlling) return;
-
-    db.ref("scores/"+d.controlling).transaction(v=>(v||0)+1);
-  });
-},1000);
-
-/* ================= RESPAWN ================= */
-function checkRespawn(lat,lng){
-  const respawns={
-    red:[-26.41025,152.92575],
-    green:[-26.41010,152.92600]
-  };
-
-  const r=respawns[team];
-  if(!r) return;
-
-  if(map.distance([lat,lng],r)<3){
-    db.ref("players/"+playerId).once("value").then(s=>{
-      const p=s.val();
-      if(!p.lastHit || Date.now()-p.lastHit>20000){
-        db.ref("players/"+playerId).update({lastHit:Date.now()});
-        navigator.vibrate(200);
+    if(map){
+      if(!markers[id]){
+        markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
+      } else {
+        markers[id].setLatLng([p.lat,p.lng]);
+        markers[id].setIcon(icon);
       }
-    });
-  }
-}
+    }
 
-/* ================= UI ================= */
-function showCenter(text){
-  centerText.innerText=text;
-  centerText.style.display="block";
-  setTimeout(()=>centerText.style.display="none",2000);
-}
+    if(adminMap){
+      const aid = "a_"+id;
+
+      if(!markers[aid]){
+        markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      } else {
+        markers[aid].setLatLng([p.lat,p.lng]);
+        markers[aid].setIcon(icon);
+      }
+    }
+  });
+});
+
+/* 🔥 ADMIN DOT RENDER ON BOTH MAPS */
+db.ref("admin/status").on("value", snap=>{
+  const a = snap.val();
+  if(!a || !a.active || !a.lat) return;
+
+  const icon = L.divIcon({
+    className:"",
+    html:`<div class="adminDot"></div>`
+  });
+
+  if(map){
+    if(!adminMarker){
+      adminMarker = L.marker([a.lat,a.lng],{icon}).addTo(map);
+    } else {
+      adminMarker.setLatLng([a.lat,a.lng]);
+    }
+  }
+
+  if(adminMap){
+    if(!window.adminMarker2){
+      window.adminMarker2 = L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
+    } else {
+      window.adminMarker2.setLatLng([a.lat,a.lng]);
+    }
+  }
+});
 
 </script>
 
