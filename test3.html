@@ -1,78 +1,142 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Battlefield Builder</title>
+  <title>Domination Gelball - HUD BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
-    body { margin:0; font-family:Arial; }
-    #map { height:100vh; }
+    body {
+      margin:0;
+      font-family:Arial;
+      background:#000;
+      color:white;
+      overflow:hidden;
+    }
 
+    #map {
+      height:100vh;
+      width:100%;
+      filter: contrast(1.1) brightness(0.9);
+    }
+
+    /* ===== LOBBY ===== */
     #lobby {
       position:fixed;
       inset:0;
-      background:#0b0f14;
       display:flex;
       flex-direction:column;
       justify-content:center;
       align-items:center;
-      color:white;
+      background:radial-gradient(circle,#111,#000);
       z-index:9999;
     }
 
-    #adminPanel {
-      position:absolute;
-      bottom:10px;
-      right:10px;
-      background:black;
+    input {
+      padding:12px;
+      margin:10px;
+      width:240px;
+      text-align:center;
+      background:#111;
       color:white;
-      padding:10px;
-      border-radius:10px;
-      z-index:2000;
+      border:1px solid #333;
+    }
+
+    .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
+
+    /* ===== WAITING SCREEN ===== */
+    #waitingScreen {
+      position:fixed;
+      inset:0;
       display:none;
+      z-index:5000;
     }
 
-    button {
-      margin:5px;
-      padding:8px;
-      cursor:pointer;
+    /* ===== HUD TOP BAR ===== */
+    #hud {
+      position:absolute;
+      top:10px;
+      right:10px;
+      background:rgba(0,0,0,0.7);
+      padding:10px;
+      border-radius:8px;
+      font-size:14px;
+      z-index:1000;
+      backdrop-filter: blur(6px);
     }
 
-    .modeBtn { width:100%; }
+    /* ===== CENTER GAME TEXT ===== */
+    #centerText {
+      position:fixed;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%);
+      font-size:34px;
+      font-weight:bold;
+      z-index:9999;
+      text-shadow:0 0 10px black;
+      pointer-events:none;
+    }
+
+    /* ===== RADAR OVERLAY ===== */
+    #radar {
+      position:absolute;
+      bottom:20px;
+      left:20px;
+      width:140px;
+      height:140px;
+      border-radius:50%;
+      border:2px solid rgba(0,255,200,0.4);
+      box-shadow:0 0 20px rgba(0,255,200,0.2);
+      overflow:hidden;
+      z-index:1000;
+      background:rgba(0,0,0,0.2);
+    }
+
+    #radar::after {
+      content:"";
+      position:absolute;
+      width:100%;
+      height:2px;
+      background:rgba(0,255,200,0.5);
+      top:50%;
+      animation: sweep 2s linear infinite;
+    }
+
+    @keyframes sweep {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* ===== MAP ENHANCEMENTS ===== */
+    .leaflet-container {
+      background:#0b0f14 !important;
+    }
   </style>
 </head>
 
 <body>
 
+<!-- ===== LOBBY ===== -->
 <div id="lobby">
-  <h2>ENTER GAME</h2>
-  <input id="name" placeholder="Name">
-  <input id="adminCode" placeholder="Admin Code">
-  <button onclick="enter()">ENTER</button>
+  <h1>DOMINATION</h1>
+  <input id="name" placeholder="CALLSIGN">
+
+  <button class="teamBtn" onclick="selectTeam('red')">RED</button>
+  <button class="teamBtn" onclick="selectTeam('green')">GREEN</button>
+
+  <button onclick="joinGame()">JOIN GAME</button>
 </div>
 
-<div id="adminPanel">
-  <b>BUILD MODE</b><br>
-
-  <button class="modeBtn" onclick="setMode('wall')">🧱 Wall</button>
-  <button class="modeBtn" onclick="setMode('drum')">🛢 Drum</button>
-  <button class="modeBtn" onclick="setMode('bridge')">🌉 Bridge</button>
-  <button class="modeBtn" onclick="setMode('fence')">🚧 Fence</button>
-  <button class="modeBtn" onclick="setMode('water')">🌊 Water</button>
-
-  <hr>
-
-  <button onclick="startDraw()">▶ Start</button>
-  <button onclick="endDraw()">⏹ End</button>
-
-  <hr>
-
-  <button onclick="exitAdmin()">❌ Exit</button>
+<!-- ===== GAME SCREEN ===== -->
+<div id="waitingScreen">
+  <div id="map"></div>
+  <div id="hud">Waiting for game...</div>
+  <div id="radar"></div>
 </div>
 
-<div id="map"></div>
+<div id="centerText"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -80,173 +144,150 @@
 
 <script>
 
-/* FIREBASE */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
-  apiKey: "YOUR_KEY",
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* MAP */
-const map = L.map('map').setView([-26.4103,152.9258],18);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+/* ================= PLAYER ================= */
+let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
+localStorage.setItem("playerId",playerId);
 
-/* PLAYER GPS MARKER */
-let playerMarker = L.circleMarker([0,0],{
-  radius:8,
-  color:"yellow"
-}).addTo(map);
+let team = null;
 
-/* ADMIN */
-let isAdmin=false;
-let mode=null;
-let drawing=false;
-let points=[];
-let lastPoint=null;
-const MIN_DISTANCE = 3;
+/* ================= MAP ================= */
+let map;
 
-/* ENTER */
-function enter(){
-  const code = document.getElementById("adminCode").value;
+function initMap(){
+  if(map) return;
 
-  if(code === "1234"){
-    isAdmin=true;
-    document.getElementById("adminPanel").style.display="block";
-  }
+  map = L.map('map', {
+    zoomControl:true
+  }).setView([-26.4103,152.9258], 18);
 
-  document.getElementById("lobby").style.display="none";
-}
-
-/* MODE SELECT */
-function setMode(m){
-  mode=m;
-  alert("Mode: " + m);
-}
-
-/* START DRAW */
-function startDraw(){
-  if(!mode){ alert("Select mode"); return; }
-  drawing=true;
-  points=[];
-  lastPoint=null;
-}
-
-/* END DRAW */
-function endDraw(){
-  drawing=false;
-
-  if(points.length < 2) return;
-
-  const data = {
-    type: mode,
-    points: points
-  };
-
-  if(mode === "fence"){
-    points.push(points[0]);
-    db.ref("perimeter").set(data);
-  } else {
-    db.ref("objects").push(data);
-  }
-
-  points=[];
-}
-
-/* EXIT ADMIN */
-function exitAdmin(){
-  document.getElementById("adminPanel").style.display="none";
-  isAdmin=false;
-}
-
-/* DISTANCE */
-function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const toRad = x => x * Math.PI / 180;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-
-  const a =
-    Math.sin(dLat/2)**2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon/2)**2;
-
-  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-}
-
-/* GPS */
-navigator.geolocation.watchPosition(pos=>{
-
-  const lat=pos.coords.latitude;
-  const lng=pos.coords.longitude;
-
-  playerMarker.setLatLng([lat,lng]);
-
-  if(drawing){
-
-    if(!lastPoint){
-      points.push([lat,lng]);
-      lastPoint={lat,lng};
-    } else {
-
-      const dist=getDistance(lastPoint.lat,lastPoint.lng,lat,lng);
-
-      if(dist >= MIN_DISTANCE){
-        points.push([lat,lng]);
-        lastPoint={lat,lng};
-      }
-    }
-  }
-
-});
-
-/* RENDER OBJECTS */
-let layers=[];
-
-db.ref("objects").on("value",snap=>{
-
-  layers.forEach(l=>map.removeLayer(l));
-  layers=[];
-
-  const data=snap.val();
-  if(!data) return;
-
-  Object.values(data).forEach(obj=>{
-
-    let color="white";
-
-    if(obj.type==="wall") color="orange";
-    if(obj.type==="drum") color="blue";
-    if(obj.type==="bridge") color="brown";
-    if(obj.type==="water") color="cyan";
-
-    const line=L.polyline(obj.points,{color,weight:4}).addTo(map);
-    layers.push(line);
-
-  });
-
-});
-
-/* RENDER PERIMETER */
-let perimeterLayer=null;
-
-db.ref("perimeter").on("value",snap=>{
-
-  if(perimeterLayer) map.removeLayer(perimeterLayer);
-
-  const data=snap.val();
-  if(!data) return;
-
-  perimeterLayer = L.polygon(data.points,{
-    color:"red",
-    fillColor:"red",
-    fillOpacity:0.1,
-    weight:3
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    opacity:0.8
   }).addTo(map);
 
+  // Battlefield perimeter (UNCHANGED LOGIC)
+  L.polygon([
+    [-26.410576,152.925350],
+    [-26.410366,152.926038],
+    [-26.410319,152.926016],
+    [-26.410285,152.926102],
+    [-26.410297,152.926128],
+    [-26.410200,152.926429],
+    [-26.410081,152.926291],
+    [-26.410020,152.926272],
+    [-26.409833,152.926069],
+    [-26.409810,152.926023],
+    [-26.409807,152.925945],
+    [-26.409696,152.925928],
+    [-26.409707,152.925760],
+    [-26.409786,152.925749],
+    [-26.409809,152.925480],
+    [-26.410572,152.925348]
+  ], {
+    color:"#00bfff",
+    fillOpacity:0.12
+  }).addTo(map);
+
+  setTimeout(()=>map.invalidateSize(),400);
+}
+
+/* ================= TEAM ================= */
+function selectTeam(t){
+  team = t;
+}
+
+/* ================= JOIN GAME ================= */
+function joinGame(){
+  const name = document.getElementById("name").value;
+  if(!name || !team) return alert("Enter name + team");
+
+  document.getElementById("lobby").style.display="none";
+  document.getElementById("waitingScreen").style.display="block";
+
+  initMap();
+
+  navigator.geolocation.getCurrentPosition(pos=>{
+    db.ref("players/"+playerId).set({
+      name,
+      team,
+      lat:pos.coords.latitude,
+      lng:pos.coords.longitude
+    });
+  });
+}
+
+/* ================= GPS TRACKING ================= */
+navigator.geolocation.watchPosition(pos=>{
+  db.ref("players/"+playerId).update({
+    lat:pos.coords.latitude,
+    lng:pos.coords.longitude
+  });
 });
+
+/* ================= RENDER PLAYERS ================= */
+const markers = {};
+
+db.ref("players").on("value", snap=>{
+  const data = snap.val();
+  if(!data || !map) return;
+
+  Object.keys(data).forEach(id=>{
+    const p = data[id];
+    if(!p.lat || !p.lng) return;
+
+    const color = (p.team === "red") ? "red" : "lime";
+
+    const icon = L.divIcon({
+      className:"",
+      html:`
+        <div style="
+          width:14px;
+          height:14px;
+          border-radius:50%;
+          background:${color};
+          box-shadow:0 0 12px ${color};
+        "></div>
+      `
+    });
+
+    if(!markers[id]){
+      markers[id] = L.marker([p.lat,p.lng],{icon}).addTo(map);
+    } else {
+      markers[id].setLatLng([p.lat,p.lng]);
+      markers[id].setIcon(icon);
+    }
+
+  });
+});
+
+/* ================= ADMIN (BASIC) ================= */
+function startGame(){
+  db.ref("game").set({state:"live"});
+}
+
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
+
+/* ================= HUD LOOP ================= */
+setInterval(()=>{
+  db.ref("game").once("value").then(s=>{
+    const g = s.val();
+    if(!g) return;
+
+    document.getElementById("hud").innerHTML =
+      "STATE: " + g.state;
+  });
+},1000);
 
 </script>
 
