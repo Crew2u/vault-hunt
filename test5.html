@@ -42,7 +42,10 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #map { height:100vh; width:100%; }
+    #map {
+      height:100vh;
+      width:100%;
+    }
 
     #hud {
       position:absolute;
@@ -64,6 +67,33 @@
       z-index:10000;
     }
 
+    /* ================= ADMIN FIXED LAYOUT ================= */
+    #adminScreen {
+      background:#000;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      z-index:10000;
+
+      padding:20px;
+      gap:14px;
+      box-sizing:border-box;
+    }
+
+    #adminScreen h2 {
+      margin:0 0 20px 0;
+      text-align:center;
+    }
+
+    #adminScreen button {
+      width:220px;
+      max-width:80vw;
+      padding:14px;
+      font-size:18px;
+      border-radius:10px;
+      cursor:pointer;
+    }
+
     #adminMap {
       width:90%;
       height:60%;
@@ -78,22 +108,12 @@
       font-size:34px;
       z-index:9999;
     }
-
-    /* ✅ FIXED: safe animation via class (no layout break) */
-    .adminDot {
-      animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(1); opacity:1; }
-      50% { transform: scale(1.5); opacity:0.6; }
-      100% { transform: scale(1); opacity:1; }
-    }
   </style>
 </head>
 
 <body>
 
+<!-- LOBBY -->
 <div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
@@ -106,13 +126,16 @@
   <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
+<!-- GAME -->
 <div id="gameScreen" class="screen">
   <div id="map"></div>
   <div id="hud">Waiting...</div>
 </div>
 
+<!-- ADMIN -->
 <div id="adminScreen" class="screen">
   <h2>ADMIN PANEL</h2>
+
   <button onclick="startGame()">START</button>
   <button onclick="stopGame()">STOP</button>
   <button onclick="exitAdmin()">EXIT</button>
@@ -128,7 +151,7 @@
 
 <script>
 
-/* FIREBASE */
+/* ================= FIREBASE ================= */
 const firebaseConfig = {
   apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
@@ -138,18 +161,18 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER */
+/* ================= PLAYER ================= */
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
 let team = null;
 let isAdmin = false;
 
-/* MAPS */
+/* ================= MAPS ================= */
 let map = null;
 let adminMap = null;
 
-/* FIELD */
+/* ================= FIELD ================= */
 const battlefieldCoords = [
   [-26.410576,152.925350],
   [-26.410366,152.926038],
@@ -169,13 +192,13 @@ const battlefieldCoords = [
   [-26.410572,152.925348]
 ];
 
-/* SCREEN */
+/* ================= SCREEN ================= */
 function showScreen(id){
   document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
   document.getElementById(id).style.display="flex";
 }
 
-/* MAP INIT */
+/* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
 
@@ -185,7 +208,10 @@ function initMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(map);
 
-  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
+  L.polygon(battlefieldCoords,{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(map);
 
   setTimeout(()=>map.invalidateSize(),300);
 }
@@ -199,15 +225,18 @@ function initAdminMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(adminMap);
 
-  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
+  L.polygon(battlefieldCoords,{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(adminMap);
 
   setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
-/* TEAM */
+/* ================= TEAM ================= */
 function selectTeam(t){ team = t; }
 
-/* JOIN */
+/* ================= JOIN ================= */
 function joinGame(){
   const name = document.getElementById("name").value;
   if(!name || !team) return alert("Enter name + team");
@@ -218,15 +247,17 @@ function joinGame(){
   const ref = db.ref("players/"+playerId);
 
   ref.set({
-    name, team,
-    lat:0,lng:0,
+    name,
+    team,
+    lat:0,
+    lng:0,
     isAdmin:false
   });
 
   ref.onDisconnect().remove();
 }
 
-/* ADMIN */
+/* ================= ADMIN ================= */
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
@@ -237,7 +268,8 @@ function adminLogin(){
     db.ref("players/"+playerId).set({
       name:"ADMIN",
       team:"admin",
-      lat:0,lng:0,
+      lat:0,
+      lng:0,
       isAdmin:true
     });
   }
@@ -255,7 +287,7 @@ function exitAdmin(){
   showScreen("lobby");
 }
 
-/* GPS */
+/* ================= GPS ================= */
 navigator.geolocation.watchPosition(pos=>{
   db.ref("players/"+playerId).update({
     lat:pos.coords.latitude,
@@ -263,7 +295,7 @@ navigator.geolocation.watchPosition(pos=>{
   });
 });
 
-/* RENDER */
+/* ================= RENDER ================= */
 const markers = {};
 
 db.ref("players").on("value", snap=>{
@@ -283,8 +315,7 @@ db.ref("players").on("value", snap=>{
     let color = isPlayerAdmin ? "purple" : (p.team === "red" ? "red" : "lime");
 
     const icon = L.divIcon({
-      className:"",
-      html:`<div class="${isPlayerAdmin ? "adminDot" : ""}" style="
+      html:`<div style="
         width:14px;height:14px;
         background:${color};
         border-radius:50%;
