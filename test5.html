@@ -137,7 +137,7 @@
 
 /* ================= FIREBASE ================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigODyokEMFohLMUo",
+  apiKey: "AIzaSyD8TsM63_vHw4WiS8UigEMFohLMUo",
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
@@ -155,13 +155,22 @@ let team = null;
 let map = null;
 let adminMap = null;
 
+/* 🔥 FIX: battlefield shared layer */
+let battlefieldLayer = null;
+
 /* ================= SCREEN CONTROL ================= */
 function showScreen(id){
   document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
   document.getElementById(id).style.display="flex";
+
+  // IMPORTANT FIX: Leaflet must redraw after visibility change
+  setTimeout(()=>{
+    if(map) map.invalidateSize();
+    if(adminMap) adminMap.invalidateSize();
+  },200);
 }
 
-/* ================= BATTLEFIELD SHARED ================= */
+/* ================= BATTLEFIELD ================= */
 const battlefieldCoords = [
   [-26.410576,152.925350],
   [-26.410366,152.926038],
@@ -181,6 +190,19 @@ const battlefieldCoords = [
   [-26.410572,152.925348]
 ];
 
+function addBattlefield(targetMap){
+  if(!targetMap) return;
+
+  if(battlefieldLayer){
+    targetMap.removeLayer(battlefieldLayer);
+  }
+
+  battlefieldLayer = L.polygon(battlefieldCoords,{
+    color:"#00bfff",
+    fillOpacity:0.4
+  }).addTo(targetMap);
+}
+
 /* ================= MAP INIT ================= */
 function initMap(){
   if(map) return;
@@ -192,11 +214,7 @@ function initMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(map);
 
-  L.polygon(battlefieldCoords,{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(map);
-
+  addBattlefield(map);
   setTimeout(()=>map.invalidateSize(),300);
 }
 
@@ -211,15 +229,9 @@ function initAdminMap(){
     { maxZoom: 19, opacity: 1 }
   ).addTo(adminMap);
 
-  /* 🔥 FIX: ADD BATTLEFIELD TO ADMIN MAP (THIS WAS MISSING) */
-  L.polygon(battlefieldCoords,{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(adminMap);
+  addBattlefield(adminMap); // 🔥 FIX: admin now gets battlefield too
 
-  setTimeout(()=>{
-    adminMap.invalidateSize();
-  },500);
+  setTimeout(()=>adminMap.invalidateSize(),300);
 }
 
 /* ================= TEAM ================= */
@@ -231,11 +243,7 @@ function joinGame(){
   if(!name || !team) return alert("Enter name + team");
 
   showScreen("gameScreen");
-
-  setTimeout(()=>{
-    initMap();
-    map.invalidateSize();
-  },200);
+  initMap();
 
   navigator.geolocation.getCurrentPosition(pos=>{
     db.ref("players/"+playerId).set({
@@ -252,11 +260,6 @@ function adminLogin(){
   if(code === "1288"){
     showScreen("adminScreen");
     initAdminMap();
-
-    /* 🔥 FIX: FORCE RENDER AFTER SCREEN IS VISIBLE */
-    setTimeout(()=>{
-      adminMap.invalidateSize();
-    },300);
   }
 }
 
@@ -280,7 +283,7 @@ navigator.geolocation.watchPosition(pos=>{
   });
 });
 
-/* ================= RENDER PLAYERS ================= */
+/* ================= RENDER ================= */
 const markers = {};
 
 db.ref("players").on("value", snap=>{
@@ -313,7 +316,6 @@ db.ref("players").on("value", snap=>{
 
     if(adminMap){
       const aid = "a_"+id;
-
       if(!markers[aid]){
         markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       } else {
@@ -321,6 +323,7 @@ db.ref("players").on("value", snap=>{
         markers[aid].setIcon(icon);
       }
     }
+
   });
 });
 
