@@ -42,10 +42,8 @@
 
     .teamBtn { padding:14px 24px; margin:10px; cursor:pointer; }
 
-    #map, #adminMap {
-      width:100%;
-      height:100%;
-    }
+    #map { height:100vh; width:100%; }
+    #adminMap { width:100%; height:100%; }
 
     #hud {
       position:absolute;
@@ -54,18 +52,17 @@
       background:rgba(0,0,0,0.7);
       padding:10px;
       border-radius:8px;
-      z-index:2000;
+      z-index:1000;
     }
 
-    .scoreboard {
+    #scoreboardGame {
       position:absolute;
       top:10px;
       left:10px;
       background:rgba(0,0,0,0.7);
       padding:10px;
       border-radius:8px;
-      z-index:2000;
-      font-size:18px;
+      z-index:1000;
     }
 
     #adminControls {
@@ -73,16 +70,11 @@
       top:10px;
       left:50%;
       transform:translateX(-50%);
-      z-index:3000;
+      z-index:2000;
       background:rgba(0,0,0,0.8);
       padding:10px;
       border-radius:10px;
       text-align:center;
-    }
-
-    #adminControls button {
-      margin:5px;
-      padding:8px 12px;
     }
 
     #adminBtn {
@@ -91,21 +83,10 @@
       right:10px;
       width:40px;
       height:40px;
-      opacity:0.15;
-      background:white;
-      border-radius:50%;
+      opacity:0.05;
       z-index:10000;
     }
 
-    #centerText {
-      position:fixed;
-      top:50%;
-      left:50%;
-      transform:translate(-50%,-50%);
-      font-size:34px;
-      z-index:9999;
-      display:none;
-    }
   </style>
 </head>
 
@@ -128,7 +109,7 @@
 <div id="gameScreen" class="screen">
   <div id="map"></div>
   <div id="hud">Waiting...</div>
-  <div class="scoreboard" id="scoreboardGame">🔴 0 | 🟢 0</div>
+  <div id="scoreboardGame">🔴 0 | 🟢 0</div>
 </div>
 
 <!-- ADMIN -->
@@ -136,17 +117,13 @@
   <div id="adminMap"></div>
 
   <div id="adminControls">
-    <div>ADMIN PANEL</div>
     <button onclick="startGame()">START</button>
     <button onclick="stopGame()">STOP</button>
+    <button onclick="setDominationLive()">SET POINT LIVE</button>
     <button onclick="exitAdmin()">EXIT</button>
-    <div style="font-size:12px;">Tap map to move domination point</div>
+    <div style="font-size:12px;">Tap map to move point, then press SET</div>
   </div>
-
-  <div class="scoreboard" id="scoreboardAdmin">🔴 0 | 🟢 0</div>
 </div>
-
-<div id="centerText"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -176,7 +153,8 @@ let playerLng = null;
 let map = null;
 let adminMap = null;
 let domMarker = null;
-let adminDomMarker = null;
+let adminTempMarker = null;
+let tempPoint = null;
 
 /* SCREEN */
 function showScreen(id){
@@ -200,17 +178,27 @@ function initMap(){
     { maxZoom: 19 }
   ).addTo(map);
 
-  // 🔥 BATTLEFIELD BACK (RESTORED)
+  // ORIGINAL BATTLEFIELD (UNCHANGED)
   L.polygon([
     [-26.410576,152.925350],
     [-26.410366,152.926038],
+    [-26.410319,152.926016],
+    [-26.410285,152.926102],
+    [-26.410297,152.926128],
+    [-26.410200,152.926429],
+    [-26.410081,152.926291],
     [-26.410020,152.926272],
+    [-26.409833,152.926069],
     [-26.409810,152.926023],
+    [-26.409807,152.925945],
+    [-26.409696,152.925928],
+    [-26.409707,152.925760],
+    [-26.409786,152.925749],
     [-26.409809,152.925480],
     [-26.410572,152.925348]
   ],{
     color:"#00bfff",
-    fillOpacity:0.2
+    fillOpacity:0.4
   }).addTo(map);
 }
 
@@ -225,10 +213,13 @@ function initAdminMap(){
   ).addTo(adminMap);
 
   adminMap.on("click", e=>{
-    db.ref("dominationPoint").set({
-      lat:e.latlng.lat,
-      lng:e.latlng.lng
-    });
+    tempPoint = e.latlng;
+
+    if(!adminTempMarker){
+      adminTempMarker = L.marker(e.latlng).addTo(adminMap);
+    } else {
+      adminTempMarker.setLatLng(e.latlng);
+    }
   });
 }
 
@@ -259,6 +250,15 @@ function adminLogin(){
     showScreen("adminScreen");
     initAdminMap();
   }
+}
+
+function setDominationLive(){
+  if(!tempPoint) return alert("Tap map first");
+
+  db.ref("dominationPoint").set({
+    lat:tempPoint.lat,
+    lng:tempPoint.lng
+  });
 }
 
 function startGame(){
@@ -329,15 +329,6 @@ db.ref("dominationPoint").on("value", snap=>{
       }).addTo(map);
     } else domMarker.setLatLng([d.lat,d.lng]);
   }
-
-  if(adminMap){
-    if(!adminDomMarker){
-      adminDomMarker = L.circle([d.lat,d.lng],{
-        radius:3,
-        color:"yellow"
-      }).addTo(adminMap);
-    } else adminDomMarker.setLatLng([d.lat,d.lng]);
-  }
 });
 
 /* DISTANCE */
@@ -373,7 +364,6 @@ setInterval(()=>{
 db.ref("scores").on("value", snap=>{
   const s = snap.val() || {red:0,green:0};
   document.getElementById("scoreboardGame").innerText = `🔴 ${s.red} | 🟢 ${s.green}`;
-  document.getElementById("scoreboardAdmin").innerText = `🔴 ${s.red} | 🟢 ${s.green}`;
 });
 
 /* HUD */
