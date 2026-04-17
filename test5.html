@@ -155,9 +155,6 @@ let team = null;
 let playerLat = null;
 let playerLng = null;
 
-/* ADMIN */
-let isAdmin = false;
-
 /* MAPS */
 let map = null;
 let adminMap = null;
@@ -166,12 +163,14 @@ let adminMap = null;
 let domMarker = null;
 let tempPoint = null;
 let dominationPoint = null;
+let domRenderGame = null;
+let domRenderAdmin = null;
 
 /* MARKERS */
 const markers = {};
 const adminMarkers = {};
 
-/* BATTLEFIELD (RESTORED) */
+/* BATTLEFIELD */
 const battlefieldCoords = [
   [-26.410576,152.925350],
   [-26.410366,152.926038],
@@ -259,7 +258,6 @@ function joinGame(){
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
-    isAdmin = true;
     showScreen("adminScreen");
     initAdminMap();
 
@@ -309,17 +307,14 @@ navigator.geolocation.watchPosition(pos=>{
   if(map) map.setView([playerLat,playerLng]);
 });
 
-/* PLAYER MARKERS + CLEANUP */
+/* PLAYER MARKERS CLEAN */
 db.ref("players").on("value", snap=>{
   const data = snap.val() || {};
 
-  // remove old markers
   Object.keys(markers).forEach(id=>{
     if(!data[id]){
-      map && map.removeLayer(markers[id]);
-      adminMap && adminMap.removeLayer(markers["a_"+id]);
+      if(markers[id] && map) map.removeLayer(markers[id]);
       delete markers[id];
-      delete markers["a_"+id];
     }
   });
 
@@ -346,17 +341,76 @@ db.ref("players").on("value", snap=>{
   });
 });
 
+/* 🔥 ADMIN MARKER (FIXED) */
+db.ref("admin").on("value", snap=>{
+  const a = snap.val();
+
+  // remove if admin gone
+  if(!a){
+    if(adminMarkers.main && map) map.removeLayer(adminMarkers.main);
+    if(adminMarkers.admin && adminMap) adminMap.removeLayer(adminMarkers.admin);
+    adminMarkers.main = null;
+    adminMarkers.admin = null;
+    return;
+  }
+
+  const icon = L.divIcon({
+    html:`<div style="width:16px;height:16px;background:purple;border-radius:50%;box-shadow:0 0 12px purple;border:2px solid white;"></div>`
+  });
+
+  if(map){
+    if(!adminMarkers.main){
+      adminMarkers.main = L.marker([a.lat,a.lng],{icon}).addTo(map);
+    } else {
+      adminMarkers.main.setLatLng([a.lat,a.lng]);
+    }
+  }
+
+  if(adminMap){
+    if(!adminMarkers.admin){
+      adminMarkers.admin = L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
+    } else {
+      adminMarkers.admin.setLatLng([a.lat,a.lng]);
+    }
+  }
+});
+
+/* 🔥 DOMINATION RENDER (FIXED BOTH MAPS) */
+db.ref("dominationPoint").on("value", snap=>{
+  const d = snap.val();
+  dominationPoint = d;
+
+  if(!d){
+    if(domRenderGame && map) map.removeLayer(domRenderGame);
+    if(domRenderAdmin && adminMap) adminMap.removeLayer(domRenderAdmin);
+    domRenderGame = null;
+    domRenderAdmin = null;
+    return;
+  }
+
+  if(map){
+    if(!domRenderGame){
+      domRenderGame = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
+    } else {
+      domRenderGame.setLatLng([d.lat,d.lng]);
+    }
+  }
+
+  if(adminMap){
+    if(!domRenderAdmin){
+      domRenderAdmin = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
+    } else {
+      domRenderAdmin.setLatLng([d.lat,d.lng]);
+    }
+  }
+});
+
 /* SCOREBOARD */
 db.ref("scores").on("value", snap=>{
   const s = snap.val();
   if(!s) return;
   document.getElementById("scoreboardGame").innerText =
     `🔴 ${s.red} | 🟢 ${s.green}`;
-});
-
-/* DOMINATION */
-db.ref("dominationPoint").on("value", snap=>{
-  dominationPoint = snap.val();
 });
 
 /* SCORING LOOP */
