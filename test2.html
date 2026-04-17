@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - SAFE BASE FIXED</title>
+  <title>Domination Gelball - SAFE BASE FINAL FIX</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -45,16 +45,6 @@
     #map, #adminMap {
       width:100%;
       height:100%;
-    }
-
-    #hud {
-      position:absolute;
-      top:10px;
-      right:10px;
-      background:rgba(0,0,0,0.7);
-      padding:10px;
-      border-radius:8px;
-      z-index:1000;
     }
 
     #scoreboardGame {
@@ -152,7 +142,7 @@
 
   <div id="adminControls">
     <button onclick="startGame()">START</button>
-    <button onclick="stopGame()">END</button>
+    <button onclick="stopGame()">STOP</button>
     <button onclick="setDomination()">SET POINT</button>
     <button onclick="exitAdmin()">EXIT</button>
   </div>
@@ -170,7 +160,6 @@ const firebaseConfig = {
   authDomain: "vault-hunt.firebaseapp.com",
   databaseURL: "https://vault-hunt-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -178,20 +167,13 @@ const db = firebase.database();
 let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
-let team = null;
-let playerLat = null;
-let playerLng = null;
+let team=null;
 
-/* 🔥 FIX: STORE LAST DOM POINT */
-let lastDominationPoint = null;
-
-/* MAPS */
-let map = null;
-let adminMap = null;
-
-/* DOMINATION */
-let domRenderGame = null;
-let domRenderAdmin = null;
+/* STATE */
+let map=null, adminMap=null;
+let lastDominationPoint=null;
+let domRenderGame=null, domRenderAdmin=null;
+let timerInterval=null;
 
 /* SCREEN */
 function showScreen(id){
@@ -204,63 +186,134 @@ function showScreen(id){
   },300);
 }
 
-/* MAP */
+/* MAP INIT */
 function initMap(){
   if(map) return;
 
-  map = L.map('map').setView([-26.4103,152.9258],18);
+  map=L.map('map').setView([-26.4103,152.9258],18);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
 
-  L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-  ).addTo(map);
-
-  /* 🔥 FIX: redraw capture if exists */
   if(lastDominationPoint){
-    domRenderGame = L.circle(
-      [lastDominationPoint.lat,lastDominationPoint.lng],
-      {radius:3,color:"yellow"}
-    ).addTo(map);
+    domRenderGame=L.circle([lastDominationPoint.lat,lastDominationPoint.lng],{radius:3,color:"yellow"}).addTo(map);
   }
 }
 
-/* ADMIN MAP */
 function initAdminMap(){
   if(adminMap) return;
 
-  adminMap = L.map('adminMap').setView([-26.4103,152.9258],18);
+  adminMap=L.map('adminMap').setView([-26.4103,152.9258],18);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(adminMap);
 
-  L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-  ).addTo(adminMap);
+  adminMap.on("click",e=>{
+    tempPoint=e.latlng;
+  });
 
-  /* 🔥 FIX */
   if(lastDominationPoint){
-    domRenderAdmin = L.circle(
-      [lastDominationPoint.lat,lastDominationPoint.lng],
-      {radius:3,color:"yellow"}
-    ).addTo(adminMap);
+    domRenderAdmin=L.circle([lastDominationPoint.lat,lastDominationPoint.lng],{radius:3,color:"yellow"}).addTo(adminMap);
   }
 }
 
-/* DOMINATION LISTENER */
-db.ref("dominationPoint").on("value", snap=>{
-  const d = snap.val();
+/* TEAM */
+function selectTeam(t){ team=t; }
+
+/* JOIN */
+function joinGame(){
+  const name=document.getElementById("name").value;
+  if(!name||!team) return alert("Enter name + team");
+
+  showScreen("gameScreen");
+  initMap();
+
+  navigator.geolocation.watchPosition(pos=>{
+    db.ref("players/"+playerId).set({
+      name,team,
+      lat:pos.coords.latitude,
+      lng:pos.coords.longitude
+    });
+  });
+}
+
+/* ADMIN */
+function adminLogin(){
+  if(prompt("Admin Code")==="1288"){
+    showScreen("adminScreen");
+    initAdminMap();
+  }
+}
+function exitAdmin(){ showScreen("lobby"); }
+
+/* CAPTURE */
+let tempPoint=null;
+function setDomination(){
+  if(!tempPoint) return alert("Tap map first");
+  db.ref("dominationPoint").set(tempPoint);
+}
+
+db.ref("dominationPoint").on("value",snap=>{
+  const d=snap.val();
   if(!d) return;
 
-  lastDominationPoint = d;
+  lastDominationPoint=d;
 
   if(map){
-    if(!domRenderGame){
-      domRenderGame = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
-    } else domRenderGame.setLatLng([d.lat,d.lng]);
+    if(!domRenderGame) domRenderGame=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
+    else domRenderGame.setLatLng([d.lat,d.lng]);
   }
 
   if(adminMap){
-    if(!domRenderAdmin){
-      domRenderAdmin = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
-    } else domRenderAdmin.setLatLng([d.lat,d.lng]);
+    if(!domRenderAdmin) domRenderAdmin=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
+    else domRenderAdmin.setLatLng([d.lat,d.lng]);
   }
 });
+
+/* GAME CONTROL */
+function startGame(){
+  db.ref("game").set({state:"live",start:Date.now()});
+}
+
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
+
+/* TIMER */
+db.ref("game").on("value",snap=>{
+  const g=snap.val();
+  if(!g) return;
+
+  clearInterval(timerInterval);
+
+  if(g.state==="live"){
+    showOverlay("GAME STARTED");
+
+    timerInterval=setInterval(()=>{
+      let remaining=900-Math.floor((Date.now()-g.start)/1000);
+      if(remaining<0) remaining=0;
+
+      const m=String(Math.floor(remaining/60)).padStart(2,"0");
+      const s=String(remaining%60).padStart(2,"0");
+
+      document.querySelectorAll("#timer").forEach(t=>t.innerText=`${m}:${s}`);
+
+      if(remaining===0){
+        clearInterval(timerInterval);
+        showOverlay("GAME OVER");
+      }
+    },1000);
+  }
+
+  if(g.state==="ended"){
+    document.querySelectorAll("#timer").forEach(t=>t.innerText="00:00");
+    showOverlay("GAME OVER");
+  }
+});
+
+/* OVERLAY */
+function showOverlay(text){
+  const el=document.getElementById("overlay");
+  el.innerText=text;
+  el.style.display="flex";
+  setTimeout(()=>el.style.display="none",5000);
+}
 
 </script>
 
