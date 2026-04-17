@@ -167,6 +167,30 @@ let domMarker = null;
 let tempPoint = null;
 let dominationPoint = null;
 
+/* MARKERS */
+const markers = {};
+const adminMarkers = {};
+
+/* BATTLEFIELD (RESTORED) */
+const battlefieldCoords = [
+  [-26.410576,152.925350],
+  [-26.410366,152.926038],
+  [-26.410319,152.926016],
+  [-26.410285,152.926102],
+  [-26.410297,152.926128],
+  [-26.410200,152.926429],
+  [-26.410081,152.926291],
+  [-26.410020,152.926272],
+  [-26.409833,152.926069],
+  [-26.409810,152.926023],
+  [-26.409807,152.925945],
+  [-26.409696,152.925928],
+  [-26.409707,152.925760],
+  [-26.409786,152.925749],
+  [-26.409809,152.925480],
+  [-26.410572,152.925348]
+];
+
 /* SCREEN */
 function showScreen(id){
   document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
@@ -178,22 +202,30 @@ function showScreen(id){
   },300);
 }
 
-/* MAP INIT */
+/* MAP */
 function initMap(){
   if(map) return;
+
   map = L.map('map').setView([-26.4103,152.9258],18);
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
+
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
 }
 
+/* ADMIN MAP */
 function initAdminMap(){
   if(adminMap) return;
+
   adminMap = L.map('adminMap').setView([-26.4103,152.9258],18);
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(adminMap);
 
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
+
   adminMap.on("click", e=>{
     tempPoint = e.latlng;
+
     if(domMarker) domMarker.setLatLng(e.latlng);
     else domMarker = L.circleMarker(e.latlng,{radius:10,color:"yellow"}).addTo(adminMap);
   });
@@ -219,7 +251,7 @@ function joinGame(){
       lng:pos.coords.longitude
     });
 
-    ref.onDisconnect().remove(); // 🔥 REMOVE GHOST PLAYER
+    ref.onDisconnect().remove();
   });
 }
 
@@ -240,7 +272,7 @@ function adminLogin(){
       });
     });
 
-    ref.onDisconnect().remove(); // 🔥 REMOVE ADMIN GHOST
+    ref.onDisconnect().remove();
   }
 }
 
@@ -264,7 +296,7 @@ function exitAdmin(){
   showScreen("lobby");
 }
 
-/* GPS TRACK */
+/* GPS */
 navigator.geolocation.watchPosition(pos=>{
   playerLat = pos.coords.latitude;
   playerLng = pos.coords.longitude;
@@ -277,7 +309,44 @@ navigator.geolocation.watchPosition(pos=>{
   if(map) map.setView([playerLat,playerLng]);
 });
 
-/* SCOREBOARD UI */
+/* PLAYER MARKERS + CLEANUP */
+db.ref("players").on("value", snap=>{
+  const data = snap.val() || {};
+
+  // remove old markers
+  Object.keys(markers).forEach(id=>{
+    if(!data[id]){
+      map && map.removeLayer(markers[id]);
+      adminMap && adminMap.removeLayer(markers["a_"+id]);
+      delete markers[id];
+      delete markers["a_"+id];
+    }
+  });
+
+  Object.keys(data).forEach(id=>{
+    const p = data[id];
+    if(!p.lat) return;
+
+    const color = p.team==="red"?"red":"lime";
+
+    const icon = L.divIcon({
+      html:`<div style="width:14px;height:14px;background:${color};border-radius:50%;box-shadow:0 0 10px ${color};"></div>`
+    });
+
+    if(map){
+      if(!markers[id]) markers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+      else markers[id].setLatLng([p.lat,p.lng]);
+    }
+
+    if(adminMap){
+      const aid="a_"+id;
+      if(!markers[aid]) markers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      else markers[aid].setLatLng([p.lat,p.lng]);
+    }
+  });
+});
+
+/* SCOREBOARD */
 db.ref("scores").on("value", snap=>{
   const s = snap.val();
   if(!s) return;
@@ -285,12 +354,12 @@ db.ref("scores").on("value", snap=>{
     `🔴 ${s.red} | 🟢 ${s.green}`;
 });
 
-/* DOMINATION POINT */
+/* DOMINATION */
 db.ref("dominationPoint").on("value", snap=>{
   dominationPoint = snap.val();
 });
 
-/* GAME LOOP SCORING */
+/* SCORING LOOP */
 setInterval(()=>{
   if(!dominationPoint) return;
 
@@ -318,8 +387,8 @@ setInterval(()=>{
 
     db.ref("scores").transaction(s=>{
       if(!s) s = {red:0,green:0};
-      if(red > green) s.red += 1;
-      else s.green += 1;
+      if(red > green) s.red++;
+      else s.green++;
       return s;
     });
 
