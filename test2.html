@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - FULL FIX BUILD</title>
+  <title>Domination Gelball - FULL RESTORE FIX</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -51,6 +51,16 @@
       height:100%;
     }
 
+    #hud {
+      position:absolute;
+      top:10px;
+      right:10px;
+      background:rgba(0,0,0,0.7);
+      padding:10px;
+      border-radius:8px;
+      z-index:1000;
+    }
+
     #scoreboardGame {
       position:absolute;
       top:10px;
@@ -79,9 +89,26 @@
       transform:translateX(-50%);
       z-index:2000;
       background:rgba(0,0,0,0.85);
-      padding:12px;
+      padding:14px;
       border-radius:10px;
       text-align:center;
+    }
+
+    #adminControls button {
+      padding:12px 18px;
+      margin:6px;
+      font-size:14px;
+      cursor:pointer;
+    }
+
+    #adminBtn {
+      position:absolute;
+      bottom:10px;
+      right:10px;
+      width:50px;
+      height:50px;
+      opacity:0.05;
+      z-index:10000;
     }
 
     #overlay {
@@ -94,16 +121,6 @@
       z-index:9999;
       font-size:60px;
       font-weight:bold;
-    }
-
-    #adminBtn {
-      position:absolute;
-      bottom:10px;
-      right:10px;
-      width:40px;
-      height:40px;
-      opacity:0.05;
-      z-index:10000;
     }
   </style>
 </head>
@@ -162,7 +179,7 @@ firebase.initializeApp({
 
 const db = firebase.database();
 
-/* STATE (UNCHANGED STRUCTURE) */
+/* CORE STATE (UNCHANGED STRUCTURE PRESERVED) */
 let map = null;
 let adminMap = null;
 
@@ -177,7 +194,11 @@ let dominationPoint = null;
 
 let score = { red:0, green:0 };
 
-/* BATTLEFIELD (RESTORED EXACT SHAPE) */
+/* TIMER */
+let timer = null;
+let timeLeft = 900;
+
+/* BATTLEFIELD (RESTORED EXACTLY) */
 const battlefieldCoords = [
   [-26.410576,152.925350],
   [-26.410366,152.926038],
@@ -186,6 +207,7 @@ const battlefieldCoords = [
   [-26.410297,152.926128],
   [-26.410200,152.926429],
   [-26.410081,152.926291],
+  [-26.410020,152.926272],
   [-26.410020,152.926272],
   [-26.409833,152.926069],
   [-26.409810,152.926023],
@@ -208,7 +230,7 @@ function showScreen(id){
   },300);
 }
 
-/* MAP INIT */
+/* MAP INIT (UNCHANGED LOGIC) */
 function initMap(){
   if(map) return;
 
@@ -256,15 +278,14 @@ function joinGame(){
 
   navigator.geolocation.watchPosition(pos=>{
     db.ref("players/"+playerId).set({
-      name,
-      team,
+      name, team,
       lat: pos.coords.latitude,
       lng: pos.coords.longitude
     });
   });
 }
 
-/* ADMIN LOGIN (RESTORED) */
+/* ADMIN LOGIN */
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
@@ -277,55 +298,49 @@ function exitAdmin(){
   showScreen("lobby");
 }
 
-/* SET CAPTURE POINT */
+/* CAPTURE */
 function setDomination(){
   if(!tempPoint) return alert("Tap map first");
-  db.ref("dominationPoint").set({
-    lat: tempPoint.lat,
-    lng: tempPoint.lng
-  });
+  db.ref("dominationPoint").set(tempPoint);
 }
 
-/* CAPTURE SYNC (CRITICAL FIX: LATE JOIN SAFE) */
+/* CAPTURE SYNC */
 db.ref("dominationPoint").on("value", snap=>{
-  const d = snap.val();
-  if(!d) return;
+  dominationPoint = snap.val();
 
-  dominationPoint = d;
+  if(!dominationPoint) return;
 
   if(map){
-    if(!window.domGame){
-      window.domGame = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
-    } else {
-      window.domGame.setLatLng([d.lat,d.lng]);
-    }
+    if(!window.domGame)
+      window.domGame = L.circle([dominationPoint.lat,dominationPoint.lng],{radius:3,color:"yellow"}).addTo(map);
+    else
+      window.domGame.setLatLng([dominationPoint.lat,dominationPoint.lng]);
   }
 
   if(adminMap){
-    if(!window.domAdmin){
-      window.domAdmin = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
-    } else {
-      window.domAdmin.setLatLng([d.lat,d.lng]);
-    }
+    if(!window.domAdmin)
+      window.domAdmin = L.circle([dominationPoint.lat,dominationPoint.lng],{radius:3,color:"yellow"}).addTo(adminMap);
+    else
+      window.domAdmin.setLatLng([dominationPoint.lat,dominationPoint.lng]);
   }
 });
 
 /* DISTANCE */
 function getDistanceMeters(lat1,lng1,lat2,lng2){
-  const R = 6371000;
-  const dLat = (lat2-lat1)*Math.PI/180;
-  const dLng = (lng2-lng1)*Math.PI/180;
+  const R=6371000;
+  const dLat=(lat2-lat1)*Math.PI/180;
+  const dLng=(lng2-lng1)*Math.PI/180;
 
-  const a =
+  const a=
     Math.sin(dLat/2)**2 +
-    Math.cos(lat1*Math.PI/180) *
-    Math.cos(lat2*Math.PI/180) *
+    Math.cos(lat1*Math.PI/180)*
+    Math.cos(lat2*Math.PI/180)*
     Math.sin(dLng/2)**2;
 
-  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-/* PLAYERS + MARKERS + SCORING */
+/* PLAYERS + MARKERS + SCORE */
 db.ref("players").on("value", snap=>{
   const data = snap.val();
   if(!data) return;
@@ -348,22 +363,21 @@ db.ref("players").on("value", snap=>{
     }
 
     if(adminMap){
-      const aid = "a_"+id;
+      const aid="a_"+id;
       if(!markers[aid]) markers[aid] = L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
       else markers[aid].setLatLng([p.lat,p.lng]);
     }
 
-    /* 3m capture scoring (SAFE ADDITION) */
     if(dominationPoint){
-      const dist = getDistanceMeters(
+      const d = getDistanceMeters(
         p.lat,p.lng,
         dominationPoint.lat,
         dominationPoint.lng
       );
 
-      if(dist <= 3){
-        if(p.team === "red") score.red++;
-        if(p.team === "green") score.green++;
+      if(d <= 3){
+        if(p.team==="red") score.red++;
+        if(p.team==="green") score.green++;
       }
     }
   });
@@ -375,12 +389,31 @@ db.ref("players").on("value", snap=>{
   });
 });
 
-/* GAME */
+/* GAME CONTROLS (FIXED) */
 function startGame(){
-  db.ref("game").set({state:"live",start:Date.now()});
+  clearInterval(timer);
+  timeLeft = 900;
+
+  db.ref("game").set({state:"live"});
+
+  timer = setInterval(()=>{
+    timeLeft--;
+
+    const m = Math.floor(timeLeft/60);
+    const s = timeLeft%60;
+
+    document.querySelectorAll("#timer").forEach(el=>{
+      el.innerText = `${m}:${s<10?"0":""}${s}`;
+    });
+
+    if(timeLeft <= 0){
+      stopGame();
+    }
+  },1000);
 }
 
 function stopGame(){
+  clearInterval(timer);
   db.ref("game").set({state:"ended"});
 }
 
