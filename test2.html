@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - SAFE BASE FINAL FIX</title>
+  <title>Domination Gelball - FINAL STABLE BUILD</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -163,94 +163,87 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* PLAYER */
-let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
-localStorage.setItem("playerId",playerId);
-
-let team=null;
-
 /* STATE */
 let map=null, adminMap=null;
+let team=null;
+let tempPoint=null;
+let previewMarker=null; // 🔥 restored preview
 let lastDominationPoint=null;
 let domRenderGame=null, domRenderAdmin=null;
 let timerInterval=null;
 
-/* 🔥 RESTORED BATTLEFIELD */
-const battlefieldCoords = [
-  [-26.410576,152.925350],
-  [-26.410366,152.926038],
-  [-26.410319,152.926016],
-  [-26.410285,152.926102],
-  [-26.410297,152.926128],
-  [-26.410200,152.926429],
-  [-26.410081,152.926291],
-  [-26.410020,152.926272],
-  [-26.409833,152.926069],
-  [-26.409810,152.926023],
-  [-26.409807,152.925945],
-  [-26.409696,152.925928],
-  [-26.409707,152.925760],
-  [-26.409786,152.925749],
-  [-26.409809,152.925480],
-  [-26.410572,152.925348]
-];
+/* BATTLEFIELD */
+const battlefieldCoords=[[-26.410576,152.925350],[-26.410366,152.926038],[-26.410319,152.926016],[-26.410285,152.926102],[-26.410297,152.926128],[-26.410200,152.926429],[-26.410081,152.926291],[-26.410020,152.926272],[-26.409833,152.926069],[-26.409810,152.926023],[-26.409807,152.925945],[-26.409696,152.925928],[-26.409707,152.925760],[-26.409786,152.925749],[-26.409809,152.925480],[-26.410572,152.925348]];
 
-/* SCREEN */
-function showScreen(id){
-  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
-  document.getElementById(id).style.display="block";
-
-  setTimeout(()=>{
-    if(map) map.invalidateSize();
-    if(adminMap) adminMap.invalidateSize();
-  },300);
-}
-
-/* MAP INIT */
+/* MAP */
 function initMap(){
   if(map) return;
-
   map=L.map('map').setView([-26.4103,152.9258],18);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
-
-  /* 🔥 battlefield restored */
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
+}
 
-  if(lastDominationPoint){
-    domRenderGame=L.circle([lastDominationPoint.lat,lastDominationPoint.lng],{radius:3,color:"yellow"}).addTo(map);
+/* ADMIN MAP */
+function initAdminMap(){
+  if(adminMap) return;
+  adminMap=L.map('adminMap').setView([-26.4103,152.9258],18);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(adminMap);
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
+
+  /* 🔥 FULLY RESTORED PREVIEW BEHAVIOUR */
+  adminMap.on("click",e=>{
+    tempPoint=e.latlng;
+
+    if(previewMarker){
+      previewMarker.setLatLng(e.latlng);
+    } else {
+      previewMarker=L.circleMarker(e.latlng,{
+        radius:10,
+        color:"yellow"
+      }).addTo(adminMap);
+    }
+  });
+}
+
+/* TEAM */
+function selectTeam(t){ team=t; }
+
+/* JOIN */
+function joinGame(){
+  const name=document.getElementById("name").value;
+  if(!name||!team) return alert("Enter name + team");
+
+  document.getElementById("lobby").style.display="none";
+  document.getElementById("gameScreen").style.display="block";
+
+  initMap();
+}
+
+/* ADMIN */
+function adminLogin(){
+  if(prompt("Admin Code")==="1288"){
+    document.getElementById("lobby").style.display="none";
+    document.getElementById("adminScreen").style.display="block";
+
+    initAdminMap();
   }
 }
 
-function initAdminMap(){
-  if(adminMap) return;
-
-  adminMap=L.map('adminMap').setView([-26.4103,152.9258],18);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(adminMap);
-
-  /* 🔥 battlefield restored */
-  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
-
-  adminMap.on("click",e=>{
-    tempPoint=e.latlng;
-  });
-
-  if(lastDominationPoint){
-    domRenderAdmin=L.circle([lastDominationPoint.lat,lastDominationPoint.lng],{radius:3,color:"yellow"}).addTo(adminMap);
-  }
+function exitAdmin(){
+  document.getElementById("adminScreen").style.display="none";
+  document.getElementById("lobby").style.display="flex";
 }
 
 /* CAPTURE */
-let tempPoint=null;
 function setDomination(){
   if(!tempPoint) return alert("Tap map first");
   db.ref("dominationPoint").set(tempPoint);
 }
 
+/* LISTENER */
 db.ref("dominationPoint").on("value",snap=>{
   const d=snap.val();
   if(!d) return;
-
-  lastDominationPoint=d;
 
   if(map){
     if(!domRenderGame) domRenderGame=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
@@ -262,35 +255,6 @@ db.ref("dominationPoint").on("value",snap=>{
     else domRenderAdmin.setLatLng([d.lat,d.lng]);
   }
 });
-
-/* TEAM */
-function selectTeam(t){ team=t; }
-
-/* JOIN */
-function joinGame(){
-  const name=document.getElementById("name").value;
-  if(!name||!team) return alert("Enter name + team");
-
-  showScreen("gameScreen");
-  initMap();
-
-  navigator.geolocation.watchPosition(pos=>{
-    db.ref("players/"+playerId).set({
-      name,team,
-      lat:pos.coords.latitude,
-      lng:pos.coords.longitude
-    });
-  });
-}
-
-/* ADMIN */
-function adminLogin(){
-  if(prompt("Admin Code")==="1288"){
-    showScreen("adminScreen");
-    initAdminMap();
-  }
-}
-function exitAdmin(){ showScreen("lobby"); }
 
 /* GAME CONTROL */
 function startGame(){
