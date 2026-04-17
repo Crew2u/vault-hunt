@@ -49,7 +49,6 @@
 
 <body>
 
-<!-- LOBBY -->
 <div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
@@ -59,14 +58,12 @@
   <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
-<!-- GAME -->
 <div id="gameScreen" class="screen">
   <div id="map"></div>
   <div id="hud">Waiting...</div>
   <div id="scoreboardGame">🔴 0 | 🟢 0</div>
 </div>
 
-<!-- ADMIN -->
 <div id="adminScreen" class="screen">
   <div id="adminMap"></div>
   <div id="scoreboardAdmin">🔴 0 | 🟢 0</div>
@@ -111,6 +108,8 @@ const adminMarkers = {};
 let dominationPoint=null;
 let domRenderGame=null;
 let domRenderAdmin=null;
+let tempPoint=null;
+let previewMarker=null;
 
 /* BATTLEFIELD */
 const battlefieldCoords = [
@@ -144,7 +143,13 @@ function initAdminMap(){
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
 
   adminMap.on("click", e=>{
-    db.ref("dominationPoint").set(e.latlng);
+    tempPoint = e.latlng;
+
+    if(previewMarker){
+      previewMarker.setLatLng(e.latlng);
+    } else {
+      previewMarker = L.circleMarker(e.latlng,{radius:10,color:"yellow"}).addTo(adminMap);
+    }
   });
 }
 
@@ -184,6 +189,11 @@ function adminLogin(){
   }
 }
 
+function setDomination(){
+  if(!tempPoint) return alert("Tap map first");
+  db.ref("dominationPoint").set(tempPoint);
+}
+
 function exitAdmin(){ db.ref("admin").remove(); showScreen("lobby"); }
 function startGame(){ db.ref("game").set({state:"live"}); db.ref("scores").set({red:0,green:0}); }
 function stopGame(){ db.ref("game").set({state:"ended"}); }
@@ -196,11 +206,10 @@ navigator.geolocation.watchPosition(pos=>{
   if(map) map.setView([playerLat,playerLng]);
 });
 
-/* 🔥 PLAYER MARKERS FIXED */
+/* PLAYER MARKERS */
 db.ref("players").on("value", snap=>{
   const data=snap.val()||{};
 
-  // REMOVE OLD
   Object.keys(playerMarkers).forEach(id=>{
     if(!data[id]){
       if(playerMarkers[id].map) playerMarkers[id].map.removeLayer(playerMarkers[id]);
@@ -208,7 +217,6 @@ db.ref("players").on("value", snap=>{
     }
   });
 
-  // ADD / UPDATE
   Object.keys(data).forEach(id=>{
     const p=data[id];
     if(!p.lat) return;
@@ -219,23 +227,15 @@ db.ref("players").on("value", snap=>{
       html:`<div style="width:14px;height:14px;background:${color};border-radius:50%;box-shadow:0 0 10px ${color};"></div>`
     });
 
-    // PLAYER MAP
     if(map){
-      if(!playerMarkers[id]){
-        playerMarkers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-      } else {
-        playerMarkers[id].setLatLng([p.lat,p.lng]);
-      }
+      if(!playerMarkers[id]) playerMarkers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+      else playerMarkers[id].setLatLng([p.lat,p.lng]);
     }
 
-    // ADMIN MAP
     if(adminMap){
       const aid="a_"+id;
-      if(!playerMarkers[aid]){
-        playerMarkers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
-      } else {
-        playerMarkers[aid].setLatLng([p.lat,p.lng]);
-      }
+      if(!playerMarkers[aid]) playerMarkers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      else playerMarkers[aid].setLatLng([p.lat,p.lng]);
     }
   });
 });
