@@ -73,10 +73,15 @@
       left:50%;
       transform:translateX(-50%);
       z-index:2000;
-      background:rgba(0,0,0,0.8);
-      padding:10px;
+      background:rgba(0,0,0,0.85);
+      padding:12px;
       border-radius:10px;
       text-align:center;
+    }
+
+    #adminControls button {
+      margin:5px;
+      padding:10px 14px;
     }
 
     #adminBtn {
@@ -120,6 +125,7 @@
   <div id="adminControls">
     <button onclick="startGame()">START</button>
     <button onclick="stopGame()">STOP</button>
+    <button onclick="setDomination()">SET POINT</button>
     <button onclick="exitAdmin()">EXIT</button>
   </div>
 </div>
@@ -155,7 +161,10 @@ let adminLng = null;
 /* MAPS */
 let map = null;
 let adminMap = null;
+
+/* DOMINATION */
 let domMarker = null;
+let tempPoint = null;
 
 /* SCREEN */
 function showScreen(id){
@@ -168,7 +177,7 @@ function showScreen(id){
   },300);
 }
 
-/* BATTLEFIELD (UNCHANGED CORE LOGIC) */
+/* BATTLEFIELD */
 const battlefieldCoords = [
   [-26.410576,152.925350],
   [-26.410366,152.926038],
@@ -198,10 +207,7 @@ function initMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(map);
 
-  L.polygon(battlefieldCoords,{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(map);
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
 }
 
 /* ADMIN MAP */
@@ -214,10 +220,17 @@ function initAdminMap(){
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
   ).addTo(adminMap);
 
-  L.polygon(battlefieldCoords,{
-    color:"#00bfff",
-    fillOpacity:0.4
-  }).addTo(adminMap);
+  L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
+
+  adminMap.on("click", e=>{
+    tempPoint = e.latlng;
+
+    if(domMarker){
+      domMarker.setLatLng(e.latlng);
+    } else {
+      domMarker = L.circleMarker(e.latlng,{radius:10,color:"yellow"}).addTo(adminMap);
+    }
+  });
 }
 
 /* TEAM */
@@ -240,7 +253,7 @@ function joinGame(){
   });
 }
 
-/* ADMIN LOGIN (RESTORED GPS TRACKING) */
+/* ADMIN LOGIN */
 function adminLogin(){
   const code = prompt("Admin Code");
   if(code === "1288"){
@@ -260,6 +273,15 @@ function adminLogin(){
 }
 
 /* ADMIN CONTROLS */
+function setDomination(){
+  if(!tempPoint) return alert("Tap map first");
+
+  db.ref("dominationPoint").set({
+    lat: tempPoint.lat,
+    lng: tempPoint.lng
+  });
+}
+
 function startGame(){
   db.ref("game").set({state:"live"});
   db.ref("scores").set({red:0,green:0});
@@ -273,7 +295,7 @@ function exitAdmin(){
   showScreen("lobby");
 }
 
-/* PLAYER GPS */
+/* GPS */
 navigator.geolocation.watchPosition(pos=>{
   playerLat = pos.coords.latitude;
   playerLng = pos.coords.longitude;
@@ -286,7 +308,7 @@ navigator.geolocation.watchPosition(pos=>{
   if(map) map.setView([playerLat,playerLng]);
 });
 
-/* PLAYER RENDER */
+/* PLAYER MARKERS */
 const markers = {};
 db.ref("players").on("value", snap=>{
   const data = snap.val();
@@ -315,54 +337,47 @@ db.ref("players").on("value", snap=>{
   });
 });
 
-/* ADMIN DOT (RESTORED) */
+/* ADMIN DOT */
 const adminMarkers = {};
 db.ref("admin").on("value", snap=>{
   const a = snap.val();
   if(!a || !a.lat) return;
 
   const icon = L.divIcon({
-    html:`<div style="
-      width:16px;height:16px;
-      background:purple;
-      border-radius:50%;
-      box-shadow:0 0 12px purple;
-      border:2px solid white;
-    "></div>`
+    html:`<div style="width:16px;height:16px;background:purple;border-radius:50%;box-shadow:0 0 12px purple;border:2px solid white;"></div>`
   });
 
   if(map){
     if(!adminMarkers.main){
       adminMarkers.main = L.marker([a.lat,a.lng],{icon}).addTo(map);
-    } else {
-      adminMarkers.main.setLatLng([a.lat,a.lng]);
-    }
+    } else adminMarkers.main.setLatLng([a.lat,a.lng]);
   }
 
   if(adminMap){
     if(!adminMarkers.admin){
       adminMarkers.admin = L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
-    } else {
-      adminMarkers.admin.setLatLng([a.lat,a.lng]);
-    }
+    } else adminMarkers.admin.setLatLng([a.lat,a.lng]);
   }
 });
 
-/* DOMINATION */
+/* DOMINATION RENDER */
+let domRenderGame = null;
+let domRenderAdmin = null;
+
 db.ref("dominationPoint").on("value", snap=>{
   const d = snap.val();
   if(!d) return;
 
   if(map){
-    if(!domMarker){
-      domMarker = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
-    } else domMarker.setLatLng([d.lat,d.lng]);
+    if(!domRenderGame){
+      domRenderGame = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
+    } else domRenderGame.setLatLng([d.lat,d.lng]);
   }
 
   if(adminMap){
-    if(!domMarker.admin){
-      domMarker.admin = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
-    } else domMarker.admin.setLatLng([d.lat,d.lng]);
+    if(!domRenderAdmin){
+      domRenderAdmin = L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
+    } else domRenderAdmin.setLatLng([d.lat,d.lng]);
   }
 });
 
