@@ -57,6 +57,7 @@
 
 <div id="startOverlay">GAME STARTED</div>
 
+<!-- LOBBY -->
 <div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
   <input id="name" placeholder="CALLSIGN">
@@ -66,6 +67,7 @@
   <div id="adminBtn" onclick="adminLogin()"></div>
 </div>
 
+<!-- GAME -->
 <div id="gameScreen" class="screen">
   <div id="map"></div>
   <div id="hud">Waiting...</div>
@@ -73,6 +75,7 @@
   <div id="timer">15:00</div>
 </div>
 
+<!-- ADMIN -->
 <div id="adminScreen" class="screen">
   <div id="adminMap"></div>
   <div id="scoreboardAdmin">🔴 0 | 🟢 0</div>
@@ -107,16 +110,16 @@ let playerId = localStorage.getItem("playerId") || Math.random().toString(36).su
 localStorage.setItem("playerId",playerId);
 
 let team=null, playerLat=null, playerLng=null;
-let dominationPoint=null;
 
+let dominationPoint=null;
 let domCircleGame=null, domCircleAdmin=null;
+
 let tempPoint=null, previewMarker=null;
 
 const playerMarkers = {};
 const adminMarkers = {};
 
-/* 🔥 ONLY CHANGE */
-const ZONE_RADIUS = 3; // meters (was 20)
+const ZONE_RADIUS = 3;
 
 /* BATTLEFIELD */
 const battlefieldCoords = [
@@ -135,14 +138,21 @@ function showScreen(id){
   setTimeout(()=>{ if(map) map.invalidateSize(); if(adminMap) adminMap.invalidateSize(); },300);
 }
 
-/* MAPS */
+/* MAP INIT */
 function initMap(){
   if(map) return;
   map=L.map('map').setView([-26.4103,152.9258],18);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
+
+  /* 🔥 CRITICAL FIX: ALWAYS LOAD EXISTING DOMINATION POINT */
+  db.ref("dominationPoint").once("value",snap=>{
+    const d=snap.val();
+    if(d) renderDomination(d);
+  });
 }
 
+/* ADMIN MAP */
 function initAdminMap(){
   if(adminMap) return;
   adminMap=L.map('adminMap').setView([-26.4103,152.9258],18);
@@ -189,68 +199,9 @@ function setDomination(){
   db.ref("dominationPoint").set(tempPoint);
 }
 
-function startGame(){
-  db.ref("game").set({state:"live",startTime:Date.now()});
-  db.ref("scores").set({red:0,green:0});
-}
-
-function stopGame(){
-  db.ref("game").set({state:"ended"});
-}
-
-function exitAdmin(){
-  db.ref("admin").remove();
-  showScreen("lobby");
-}
-
-/* GPS */
-navigator.geolocation.watchPosition(pos=>{
-  playerLat=pos.coords.latitude;
-  playerLng=pos.coords.longitude;
-  db.ref("players/"+playerId).update({lat:playerLat,lng:playerLng});
-  if(map) map.setView([playerLat,playerLng]);
-});
-
-/* PLAYER MARKERS */
-db.ref("players").on("value",snap=>{
-  const data=snap.val()||{};
-
-  Object.keys(playerMarkers).forEach(id=>{
-    if(!data[id]){
-      if(playerMarkers[id].map) playerMarkers[id].map.removeLayer(playerMarkers[id]);
-      delete playerMarkers[id];
-    }
-  });
-
-  Object.keys(data).forEach(id=>{
-    const p=data[id];
-    if(!p.lat) return;
-
-    const color=p.team==="red"?"red":"lime";
-
-    const icon=L.divIcon({
-      html:`<div style="width:14px;height:14px;background:${color};border-radius:50%;box-shadow:0 0 10px ${color};"></div>`
-    });
-
-    if(map){
-      if(!playerMarkers[id]) playerMarkers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
-      else playerMarkers[id].setLatLng([p.lat,p.lng]);
-    }
-
-    if(adminMap){
-      const aid="a_"+id;
-      if(!playerMarkers[aid]) playerMarkers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
-      else playerMarkers[aid].setLatLng([p.lat,p.lng]);
-    }
-  });
-});
-
-/* DOMINATION ZONE */
-db.ref("dominationPoint").on("value",snap=>{
-  const d=snap.val();
+/* 🔥 FIXED: separate render function */
+function renderDomination(d){
   dominationPoint=d;
-
-  if(!d) return;
 
   if(map){
     if(!domCircleGame) domCircleGame=L.circle([d.lat,d.lng],{radius:ZONE_RADIUS,color:"yellow"}).addTo(map);
@@ -261,6 +212,12 @@ db.ref("dominationPoint").on("value",snap=>{
     if(!domCircleAdmin) domCircleAdmin=L.circle([d.lat,d.lng],{radius:ZONE_RADIUS,color:"yellow"}).addTo(adminMap);
     else domCircleAdmin.setLatLng([d.lat,d.lng]);
   }
+}
+
+/* 🔥 LIVE LISTENER (players always update) */
+db.ref("dominationPoint").on("value",snap=>{
+  const d=snap.val();
+  if(d) renderDomination(d);
 });
 
 /* SCOREBOARD */
@@ -286,6 +243,7 @@ db.ref("game").on("value",snap=>{
       let rem=Math.max(0,end-Date.now());
       let m=Math.floor(rem/60000);
       let s=Math.floor((rem%60000)/1000);
+
       const text=`${m}:${s.toString().padStart(2,'0')}`;
       document.querySelectorAll("#timer").forEach(t=>t.innerText=text);
 
