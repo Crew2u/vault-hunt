@@ -42,13 +42,17 @@
       width:40px; height:40px; opacity:0.05; z-index:10000;
     }
 
-    #startOverlay {
+    #startOverlay, #endOverlay {
       position:fixed; inset:0;
-      display:none; justify-content:center; align-items:center;
+      display:none;
+      justify-content:center;
+      align-items:center;
       background:rgba(0,0,0,0.85);
       z-index:99999;
-      font-size:60px; font-weight:bold;
+      font-size:60px;
+      font-weight:bold;
       color:#00ffcc;
+      text-align:center;
     }
   </style>
 </head>
@@ -56,6 +60,7 @@
 <body>
 
 <div id="startOverlay">GAME STARTED</div>
+<div id="endOverlay">GAME OVER</div>
 
 <!-- LOBBY -->
 <div id="lobby" class="screen" style="display:flex;">
@@ -83,7 +88,7 @@
 
   <div id="adminControls">
     <button onclick="startGame()">START</button>
-    <button onclick="stopGame()">STOP</button>
+    <button onclick="stopGame()">END</button>
     <button onclick="setDomination()">SET POINT</button>
     <button onclick="exitAdmin()">EXIT</button>
   </div>
@@ -110,26 +115,15 @@ let playerId = localStorage.getItem("playerId") || Math.random().toString(36).su
 localStorage.setItem("playerId",playerId);
 
 let team=null, playerLat=null, playerLng=null;
-
 let dominationPoint=null;
-let domCircleGame=null, domCircleAdmin=null;
 
+let domCircleGame=null, domCircleAdmin=null;
 let tempPoint=null, previewMarker=null;
 
 const playerMarkers = {};
 const adminMarkers = {};
 
 const ZONE_RADIUS = 3;
-
-/* BATTLEFIELD */
-const battlefieldCoords = [
-[-26.410576,152.925350],[-26.410366,152.926038],[-26.410319,152.926016],
-[-26.410285,152.926102],[-26.410297,152.926128],[-26.410200,152.926429],
-[-26.410081,152.926291],[-26.410020,152.926272],[-26.409833,152.926069],
-[-26.409810,152.926023],[-26.409807,152.925945],[-26.409696,152.925928],
-[-26.409707,152.925760],[-26.409786,152.925749],[-26.409809,152.925480],
-[-26.410572,152.925348]
-];
 
 /* SCREEN */
 function showScreen(id){
@@ -138,14 +132,13 @@ function showScreen(id){
   setTimeout(()=>{ if(map) map.invalidateSize(); if(adminMap) adminMap.invalidateSize(); },300);
 }
 
-/* MAP INIT */
+/* MAP */
 function initMap(){
   if(map) return;
   map=L.map('map').setView([-26.4103,152.9258],18);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
 
-  /* 🔥 CRITICAL FIX: ALWAYS LOAD EXISTING DOMINATION POINT */
   db.ref("dominationPoint").once("value",snap=>{
     const d=snap.val();
     if(d) renderDomination(d);
@@ -199,7 +192,7 @@ function setDomination(){
   db.ref("dominationPoint").set(tempPoint);
 }
 
-/* 🔥 FIXED: separate render function */
+/* DOMINATION */
 function renderDomination(d){
   dominationPoint=d;
 
@@ -214,7 +207,6 @@ function renderDomination(d){
   }
 }
 
-/* 🔥 LIVE LISTENER (players always update) */
 db.ref("dominationPoint").on("value",snap=>{
   const d=snap.val();
   if(d) renderDomination(d);
@@ -227,20 +219,21 @@ db.ref("scores").on("value",snap=>{
   document.querySelectorAll("#scoreboardGame,#scoreboardAdmin").forEach(el=>el.innerText=text);
 });
 
-/* TIMER + OVERLAY */
+/* TIMER */
 let timerInterval=null;
 
 db.ref("game").on("value",snap=>{
   const g=snap.val(); if(!g) return;
 
   if(g.state==="live"){
-    showOverlay();
+    showOverlay("startOverlay");
 
     const end=g.startTime+15*60*1000;
 
     clearInterval(timerInterval);
     timerInterval=setInterval(()=>{
       let rem=Math.max(0,end-Date.now());
+
       let m=Math.floor(rem/60000);
       let s=Math.floor((rem%60000)/1000);
 
@@ -250,13 +243,31 @@ db.ref("game").on("value",snap=>{
       if(rem<=0){
         clearInterval(timerInterval);
         db.ref("game").set({state:"ended"});
+        showOverlay("endOverlay");
       }
     },1000);
   }
+
+  if(g.state==="ended"){
+    clearInterval(timerInterval);
+    document.querySelectorAll("#timer").forEach(t=>t.innerText="0:00");
+    showOverlay("endOverlay");
+  }
 });
 
-function showOverlay(){
-  const el=document.getElementById("startOverlay");
+/* START / END */
+function startGame(){
+  db.ref("game").set({state:"live",startTime:Date.now()});
+  db.ref("scores").set({red:0,green:0});
+}
+
+function stopGame(){
+  db.ref("game").set({state:"ended"});
+}
+
+/* OVERLAYS */
+function showOverlay(id){
+  const el=document.getElementById(id);
   el.style.display="flex";
   setTimeout(()=>el.style.display="none",5000);
 }
@@ -288,7 +299,7 @@ setInterval(()=>{
 
       const dist=getDistance({lat:p.lat,lng:p.lng},dominationPoint);
 
-      if(dist <= ZONE_RADIUS){
+      if(dist<=ZONE_RADIUS){
         if(p.team==="red") red++;
         if(p.team==="green") green++;
       }
