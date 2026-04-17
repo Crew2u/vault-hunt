@@ -1,14 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - FULL FIXED BUILD</title>
+  <title>Domination Gelball - FULL FINAL FIX</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
   <style>
     body { margin:0; font-family:Arial; background:#000; color:white; overflow:hidden; }
-
     .screen { position:fixed; inset:0; display:none; }
 
     #lobby {
@@ -17,23 +16,33 @@
       justify-content:center;
       align-items:center;
       background:radial-gradient(circle,#111,#000);
+      z-index:9999;
     }
 
-    input { padding:12px; margin:10px; width:240px; text-align:center; background:#111; color:white; border:1px solid #333; }
+    input {
+      padding:12px;
+      margin:10px;
+      width:240px;
+      text-align:center;
+      background:#111;
+      color:white;
+      border:1px solid #333;
+    }
 
-    button { padding:12px 20px; margin:6px; }
+    button { padding:10px 14px; margin:5px; cursor:pointer; }
 
     #map, #adminMap { width:100%; height:100%; }
 
-    #scoreboardGame, #scoreboardAdmin {
+    #scoreboardGame, #scoreboardAdmin, #timer {
       position:absolute;
-      top:10px;
-      left:10px;
       background:rgba(0,0,0,0.7);
       padding:10px;
       border-radius:8px;
       z-index:1000;
     }
+
+    #scoreboardGame, #scoreboardAdmin { top:10px; left:10px; }
+    #timer { top:10px; left:50%; transform:translateX(-50%); }
 
     #adminControls {
       position:absolute;
@@ -45,15 +54,27 @@
       border-radius:10px;
       z-index:2000;
     }
+
+    #overlay {
+      position:fixed;
+      inset:0;
+      display:none;
+      justify-content:center;
+      align-items:center;
+      background:rgba(0,0,0,0.9);
+      font-size:60px;
+      z-index:9999;
+    }
   </style>
 </head>
 
 <body>
 
+<div id="overlay"></div>
+
 <!-- LOBBY -->
 <div id="lobby" class="screen" style="display:flex;">
   <h1>DOMINATION</h1>
-
   <input id="name" placeholder="CALLSIGN">
 
   <button onclick="selectTeam('red')">RED</button>
@@ -67,6 +88,7 @@
 <div id="gameScreen" class="screen">
   <div id="map"></div>
   <div id="scoreboardGame">🔴 0 | 🟢 0</div>
+  <div id="timer">15:00</div>
 </div>
 
 <!-- ADMIN -->
@@ -74,8 +96,11 @@
   <div id="adminMap"></div>
 
   <div id="scoreboardAdmin">🔴 0 | 🟢 0</div>
+  <div id="timer">15:00</div>
 
   <div id="adminControls">
+    <button onclick="startGame()">START</button>
+    <button onclick="endGame()">END</button>
     <button onclick="setDomination()">SET POINT</button>
     <button onclick="exitAdmin()">EXIT</button>
   </div>
@@ -97,15 +122,18 @@ const db=firebase.database();
 
 /* GLOBAL */
 let map, adminMap;
-let playerId=localStorage.getItem("playerId")||Math.random().toString(36).substr(2,9);
+let playerId = localStorage.getItem("playerId") || Math.random().toString(36).substr(2,9);
 localStorage.setItem("playerId",playerId);
 
 let team=null;
 let tempPoint=null;
 
-const gameMarkers={}, adminMarkers={};
-let adminMarkerGame=null, adminMarkerAdmin=null;
+let previewMarker=null;
 let domGame=null, domAdmin=null;
+let adminMarkerGame=null, adminMarkerAdmin=null;
+
+const gameMarkers={}, adminMarkers={};
+const ZONE_RADIUS=3;
 
 /* BATTLEFIELD */
 const battlefieldCoords=[
@@ -131,12 +159,8 @@ function showScreen(id){
 /* MAP INIT */
 function initMap(){
   if(map) return;
-
   map=L.map('map').setView([-26.4103,152.9258],18);
-
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
-    .addTo(map);
-
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
 }
 
@@ -146,13 +170,17 @@ function initAdminMap(){
 
   adminMap=L.map('adminMap').setView([-26.4103,152.9258],18);
 
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
-    .addTo(adminMap);
-
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(adminMap);
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(adminMap);
 
   adminMap.on("click",e=>{
     tempPoint=e.latlng;
+
+    if(previewMarker){
+      previewMarker.setLatLng(e.latlng);
+    } else {
+      previewMarker=L.circleMarker(e.latlng,{radius:10,color:"yellow"}).addTo(adminMap);
+    }
   });
 }
 
@@ -182,7 +210,6 @@ function adminLogin(){
     showScreen("adminScreen");
     initAdminMap();
 
-    /* ADMIN GPS TRACKING */
     navigator.geolocation.watchPosition(pos=>{
       db.ref("admin").set({
         lat:pos.coords.latitude,
@@ -194,16 +221,47 @@ function adminLogin(){
 
 function exitAdmin(){ showScreen("lobby"); }
 
-/* CAPTURE */
+/* CAPTURE SET */
 function setDomination(){
   if(!tempPoint) return alert("Tap map first");
-  db.ref("dominationPoint").set({
-    lat:tempPoint.lat,
-    lng:tempPoint.lng
-  });
+  db.ref("dominationPoint").set(tempPoint);
 }
 
-/* PLAYER DOTS */
+/* CAPTURE RENDER */
+db.ref("dominationPoint").on("value",snap=>{
+  const d=snap.val();
+  if(!d) return;
+
+  if(map){
+    if(!domGame) domGame=L.circle([d.lat,d.lng],{radius:ZONE_RADIUS,color:"yellow"}).addTo(map);
+    else domGame.setLatLng([d.lat,d.lng]);
+  }
+
+  if(adminMap){
+    if(!domAdmin) domAdmin=L.circle([d.lat,d.lng],{radius:ZONE_RADIUS,color:"yellow"}).addTo(adminMap);
+    else domAdmin.setLatLng([d.lat,d.lng]);
+  }
+});
+
+/* ADMIN DOT */
+db.ref("admin").on("value",snap=>{
+  const a=snap.val();
+  if(!a||!a.lat) return;
+
+  const icon=L.divIcon({html:`<div style="width:16px;height:16px;background:purple;border-radius:50%"></div>`});
+
+  if(map){
+    if(!adminMarkerGame) adminMarkerGame=L.marker([a.lat,a.lng],{icon}).addTo(map);
+    else adminMarkerGame.setLatLng([a.lat,a.lng]);
+  }
+
+  if(adminMap){
+    if(!adminMarkerAdmin) adminMarkerAdmin=L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
+    else adminMarkerAdmin.setLatLng([a.lat,a.lng]);
+  }
+});
+
+/* PLAYERS */
 db.ref("players").on("value",snap=>{
   const data=snap.val()||{};
 
@@ -212,7 +270,7 @@ db.ref("players").on("value",snap=>{
     if(!p.lat) return;
 
     const icon=L.divIcon({
-      html:`<div style="width:14px;height:14px;background:${p.team==="red"?"red":"lime"};border-radius:50%;"></div>`
+      html:`<div style="width:14px;height:14px;background:${p.team==="red"?"red":"lime"};border-radius:50%"></div>`
     });
 
     if(map){
@@ -227,41 +285,24 @@ db.ref("players").on("value",snap=>{
   });
 });
 
-/* ADMIN DOT FIX */
-db.ref("admin").on("value",snap=>{
-  const a=snap.val();
-  if(!a||!a.lat) return;
+/* GAME CONTROL */
+function startGame(){
+  db.ref("game").set({state:"live",start:Date.now()});
+  showOverlay("GAME STARTED");
+}
 
-  const icon=L.divIcon({
-    html:`<div style="width:16px;height:16px;background:purple;border-radius:50%;box-shadow:0 0 10px purple;"></div>`
-  });
+function endGame(){
+  db.ref("game").set({state:"ended"});
+  showOverlay("GAME OVER");
+}
 
-  if(map){
-    if(!adminMarkerGame) adminMarkerGame=L.marker([a.lat,a.lng],{icon}).addTo(map);
-    else adminMarkerGame.setLatLng([a.lat,a.lng]);
-  }
-
-  if(adminMap){
-    if(!adminMarkerAdmin) adminMarkerAdmin=L.marker([a.lat,a.lng],{icon}).addTo(adminMap);
-    else adminMarkerAdmin.setLatLng([a.lat,a.lng]);
-  }
-});
-
-/* CAPTURE RENDER FIX */
-db.ref("dominationPoint").on("value",snap=>{
-  const d=snap.val();
-  if(!d) return;
-
-  if(map){
-    if(!domGame) domGame=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(map);
-    else domGame.setLatLng([d.lat,d.lng]);
-  }
-
-  if(adminMap){
-    if(!domAdmin) domAdmin=L.circle([d.lat,d.lng],{radius:3,color:"yellow"}).addTo(adminMap);
-    else domAdmin.setLatLng([d.lat,d.lng]);
-  }
-});
+/* OVERLAY */
+function showOverlay(text){
+  const el=document.getElementById("overlay");
+  el.innerText=text;
+  el.style.display="flex";
+  setTimeout(()=>el.style.display="none",5000);
+}
 
 </script>
 
