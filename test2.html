@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Domination Gelball - FULL SYSTEM</title>
+  <title>Domination Gelball - FULL SYSTEM STABLE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -115,17 +115,19 @@ let playerId = localStorage.getItem("playerId") || Math.random().toString(36).su
 localStorage.setItem("playerId",playerId);
 
 let team=null, playerLat=null, playerLng=null;
-
 let dominationPoint=null;
+
 let domCircleGame=null, domCircleAdmin=null;
 
 let tempPoint=null, previewMarker=null;
 
-const playerMarkers = {};
+/* 🔥 FIX: SEPARATE MARKER STORES (CRITICAL) */
+const gameMarkers = {};
+const adminMarkers = {};
 
 const ZONE_RADIUS = 3;
 
-/* 🗺️ RESTORED BATTLEFIELD (IMPORTANT FIX) */
+/* BATTLEFIELD (RESTORED) */
 const battlefieldCoords = [
 [-26.410576,152.925350],[-26.410366,152.926038],[-26.410319,152.926016],
 [-26.410285,152.926102],[-26.410297,152.926128],[-26.410200,152.926429],
@@ -145,12 +147,12 @@ function showScreen(id){
 /* MAP INIT */
 function initMap(){
   if(map) return;
+
   map=L.map('map').setView([-26.4103,152.9258],18);
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
     .addTo(map);
 
-  /* 🗺️ BATTLEFIELD RESTORED */
   L.polygon(battlefieldCoords,{color:"#00bfff",fillOpacity:0.4}).addTo(map);
 
   db.ref("dominationPoint").once("value",snap=>{
@@ -162,6 +164,7 @@ function initMap(){
 /* ADMIN MAP */
 function initAdminMap(){
   if(adminMap) return;
+
   adminMap=L.map('adminMap').setView([-26.4103,152.9258],18);
 
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
@@ -236,7 +239,7 @@ db.ref("scores").on("value",snap=>{
   document.querySelectorAll("#scoreboardGame,#scoreboardAdmin").forEach(el=>el.innerText=text);
 });
 
-/* TIMER + OVERLAYS */
+/* TIMER + OVERLAY */
 let timerInterval=null;
 
 db.ref("game").on("value",snap=>{
@@ -282,12 +285,52 @@ function stopGame(){
   db.ref("game").set({state:"ended"});
 }
 
+/* EXIT (SAFE) */
+function exitAdmin(){
+  showScreen("lobby");
+}
+
 /* OVERLAY */
 function showOverlay(id){
   const el=document.getElementById(id);
   el.style.display="flex";
   setTimeout(()=>el.style.display="none",5000);
 }
+
+/* PLAYER MARKERS - FIXED */
+db.ref("players").on("value",snap=>{
+  const data=snap.val()||{};
+
+  Object.keys(data).forEach(id=>{
+    const p=data[id];
+    if(!p.lat) return;
+
+    const color=p.team==="red"?"red":"lime";
+
+    const icon=L.divIcon({
+      html:`<div style="width:14px;height:14px;background:${color};border-radius:50%;box-shadow:0 0 10px ${color};"></div>`
+    });
+
+    /* GAME MAP */
+    if(map){
+      if(!gameMarkers[id]){
+        gameMarkers[id]=L.marker([p.lat,p.lng],{icon}).addTo(map);
+      } else {
+        gameMarkers[id].setLatLng([p.lat,p.lng]);
+      }
+    }
+
+    /* ADMIN MAP */
+    if(adminMap){
+      const aid="a_"+id;
+      if(!adminMarkers[aid]){
+        adminMarkers[aid]=L.marker([p.lat,p.lng],{icon}).addTo(adminMap);
+      } else {
+        adminMarkers[aid].setLatLng([p.lat,p.lng]);
+      }
+    }
+  });
+});
 
 /* SCORING */
 function getDistance(a,b){
